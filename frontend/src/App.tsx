@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { fetchState, sendChat } from './api'
+import { fetchModels, fetchState, sendChat } from './api'
 import type { ChatMessage, Task, TaskState } from './types'
+
+const MODEL_STORAGE_KEY = 'jarvis.model'
 
 function newId(): string {
   return crypto.randomUUID()
@@ -63,6 +65,8 @@ export default function App() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [models, setModels] = useState<string[]>([])
+  const [model, setModel] = useState<string>(() => localStorage.getItem(MODEL_STORAGE_KEY) ?? '')
 
   const listEndRef = useRef<HTMLDivElement>(null)
 
@@ -71,6 +75,23 @@ export default function App() {
       .then(setTaskState)
       .catch((err) => setError(err instanceof Error ? err.message : 'Durum alınamadı.'))
   }, [])
+
+  // Seçilebilir modelleri çek; saklanan seçim geçerli değilse varsayılana düş.
+  useEffect(() => {
+    fetchModels()
+      .then((info) => {
+        setModels(info.models)
+        setModel((cur) => (cur && info.models.includes(cur) ? cur : info.default))
+      })
+      .catch(() => {
+        /* modeller alınamazsa seçici gizli kalır; Worker varsayılanı kullanır */
+      })
+  }, [])
+
+  // Seçim değiştikçe kalıcı yap.
+  useEffect(() => {
+    if (model) localStorage.setItem(MODEL_STORAGE_KEY, model)
+  }, [model])
 
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -87,7 +108,7 @@ export default function App() {
     setLoading(true)
 
     try {
-      const { reply, state } = await sendChat(text)
+      const { reply, state } = await sendChat(text, model || undefined)
       setMessages((prev) => [...prev, { id: newId(), role: 'assistant', text: reply }])
       setTaskState(state)
     } catch (err) {
@@ -108,6 +129,22 @@ export default function App() {
       <header className="app__header">
         <h1 className="app__title">Jarvis</h1>
         <span className="app__subtitle">Sohbetle Todo</span>
+        {models.length > 0 && (
+          <select
+            className="app__model"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            disabled={loading}
+            title="Gemini modeli"
+            aria-label="Gemini modeli"
+          >
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        )}
         <span className="app__counter">
           {openCount} açık · {doneCount} bitti
         </span>

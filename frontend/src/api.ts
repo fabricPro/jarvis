@@ -13,6 +13,11 @@ interface StateResponse {
   state: TaskState
 }
 
+export interface ModelsInfo {
+  models: string[]
+  default: string
+}
+
 async function parseError(res: Response): Promise<string> {
   try {
     const data = (await res.json()) as { message?: string; error?: string }
@@ -26,11 +31,11 @@ async function parseError(res: Response): Promise<string> {
  * Worker'ın /api/chat uç noktasına mesaj gönderir; asistan yanıtını ve güncel durumu döndürür.
  * (Lokal geliştirmede /api istekleri Vite proxy'si üzerinden Worker'a gider.)
  */
-export async function sendChat(message: string): Promise<ChatResponse> {
+export async function sendChat(message: string, model?: string): Promise<ChatResponse> {
   const res = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, model }),
   })
   if (!res.ok) {
     const detail = await parseError(res)
@@ -48,4 +53,14 @@ export async function fetchState(): Promise<TaskState> {
   }
   const data = (await res.json()) as StateResponse
   return data.state
+}
+
+/** Seçilebilir Gemini modelleri ve varsayılan. */
+export async function fetchModels(): Promise<ModelsInfo> {
+  const res = await fetch(`${API_BASE}/api/models`)
+  if (!res.ok) {
+    const detail = await parseError(res)
+    throw new Error(detail || `Modeller alınamadı (HTTP ${res.status})`)
+  }
+  return (await res.json()) as ModelsInfo
 }

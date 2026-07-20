@@ -7,7 +7,7 @@
  * API anahtarı yalnızca Worker env'inde durur; frontend'e asla düşmez.
  */
 
-import { geminiReduce } from './gemini'
+import { geminiReduce, resolveModels } from './gemini'
 import { reduce } from './reducer'
 import { buildReport, isReportCommand } from './report'
 import { getState, putState } from './store'
@@ -45,6 +45,7 @@ function corsHeaders(env: Env, request: Request): Record<string, string> {
 
 interface ChatRequest {
   message: string
+  model?: string
 }
 
 function json(data: unknown, init?: ResponseInit): Response {
@@ -84,9 +85,14 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
   let result
   if (env.GEMINI_API_KEY) {
+    // İstenen modeli allowlist'e karşı doğrula; geçersizse varsayılana düş.
+    const { models, default: defaultModel } = resolveModels(env)
+    const requested = typeof body?.model === 'string' ? body.model.trim() : ''
+    const model = models.includes(requested) ? requested : defaultModel
+
     // Gemini yolu — hata olursa durumu değiştirmeden 502 dön.
     try {
-      result = await geminiReduce(env, prev, message, now)
+      result = await geminiReduce(env, prev, message, now, model)
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'bilinmeyen hata'
       return json(
@@ -116,6 +122,11 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
   // GET /api/health → sağlık kontrolü
   if (url.pathname === '/api/health' && request.method === 'GET') {
     return json({ ok: true })
+  }
+
+  // GET /api/models → seçilebilir modeller + varsayılan
+  if (url.pathname === '/api/models' && request.method === 'GET') {
+    return json(resolveModels(env))
   }
 
   // GET /api/state → mevcut görev durumu

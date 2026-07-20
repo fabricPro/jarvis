@@ -18,7 +18,17 @@ interface GeminiEnv {
 }
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com'
-const DEFAULT_MODEL = 'gemini-3.5-flash'
+
+/** Varsayılan model ve kullanıcının UI'dan seçebileceği modeller (allowlist). */
+export const DEFAULT_MODEL = 'gemini-3.5-flash'
+export const MODEL_OPTIONS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash-lite']
+
+/** Seçilebilir model listesi ve varsayılan. env.GEMINI_MODEL varsa varsayılan odur ve listeye eklenir. */
+export function resolveModels(env: GeminiEnv): { models: string[]; default: string } {
+  const def = env.GEMINI_MODEL?.trim() || DEFAULT_MODEL
+  const models = Array.from(new Set([def, ...MODEL_OPTIONS]))
+  return { models, default: def }
+}
 
 const SYSTEM_INSTRUCTION = `Sen kişisel bir "sohbetle todo" asistanının görev reducer'ısın.
 Sana mevcut görev durumu (JSON) ve kullanıcının serbest metin mesajı verilir.
@@ -98,12 +108,12 @@ export async function geminiReduce(
   prev: TaskState,
   message: string,
   now: string,
+  model: string,
 ): Promise<ReduceResult> {
   const apiKey = env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY tanımlı değil')
 
   const baseUrl = (env.GEMINI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '')
-  const model = env.GEMINI_MODEL || DEFAULT_MODEL
   const url = `${baseUrl}/v1beta/models/${model}:generateContent`
 
   const userText = [

@@ -23,7 +23,7 @@ body {
 
 .app__header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.625rem;
   padding: 1rem 1.25rem;
   border-bottom: 1px solid #1e293b;
@@ -40,10 +40,25 @@ body {
   font-size: 0.875rem;
 }
 
-.app__counter {
+.app__model {
   margin-left: auto;
+  max-width: 11rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #334155;
+  border-radius: 0.5rem;
+  background: #0b1220;
+  color: #e2e8f0;
+  font-size: 0.8125rem;
+}
+
+.app__model:disabled {
+  opacity: 0.6;
+}
+
+.app__counter {
   color: #64748b;
   font-size: 0.8125rem;
+  white-space: nowrap;
 }
 
 /* --- görevler paneli --- */
