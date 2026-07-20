@@ -7,9 +7,11 @@ import type { Task, TaskState } from './types'
  * akışı alacak. Şimdilik amaç KV okuma/yazma hattını uçtan uca doğrulamak.
  *
  * Desteklenen basit komutlar:
- *   - "rapor"                         → durumu değiştirmeden gün sonu raporu döner
  *   - "bitirdim/tamamladım/yaptım X"  → eşleşen ilk açık görevi tamamlar + log yazar
  *   - diğer her mesaj                 → yeni görev ekler
+ *
+ * Not: "rapor" komutu bu redüktörden ÖNCE index.ts'te yakalanır ve deterministik
+ * report.ts tarafından üretilir (bkz. buildReport) — burada ele alınmaz.
  */
 
 export interface ReduceResult {
@@ -21,12 +23,6 @@ const DONE_PREFIX = /^(bitirdim|tamamladım|tamamladim|yaptım|yaptim|bitir)\b\s
 
 export function reduce(prev: TaskState, message: string, now: string): ReduceResult {
   const text = message.trim()
-  const lower = text.toLocaleLowerCase('tr-TR')
-
-  // --- rapor ---
-  if (lower === 'rapor' || lower.startsWith('rapor ')) {
-    return { state: { ...prev, updatedAt: now }, reply: buildReport(prev) }
-  }
 
   // --- görev tamamlama ---
   const doneMatch = text.match(DONE_PREFIX)
@@ -71,23 +67,4 @@ function completeTask(prev: TaskState, hint: string, now: string): ReduceResult 
     state: { ...prev, tasks, log, updatedAt: now },
     reply: `"${target.title}" tamamlandı olarak işaretlendi.`,
   }
-}
-
-function buildReport(state: TaskState): string {
-  const done = state.tasks.filter((t) => t.done)
-  const open = state.tasks.filter((t) => !t.done)
-
-  const lines: string[] = ['📋 Gün sonu raporu']
-  lines.push(`Tamamlanan: ${done.length} · Açık: ${open.length}`)
-
-  if (done.length > 0) {
-    lines.push('', 'Tamamlananlar:')
-    for (const t of done) lines.push(`  ✓ ${t.title}`)
-  }
-  if (open.length > 0) {
-    lines.push('', 'Açık görevler:')
-    for (const t of open) lines.push(`  • ${t.title}`)
-  }
-
-  return lines.join('\n')
 }

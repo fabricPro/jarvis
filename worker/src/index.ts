@@ -9,6 +9,7 @@
 
 import { geminiReduce } from './gemini'
 import { reduce } from './reducer'
+import { buildReport, isReportCommand } from './report'
 import { getState, putState } from './store'
 
 export interface Env {
@@ -18,6 +19,8 @@ export interface Env {
   GEMINI_API_KEY?: string
   GEMINI_MODEL?: string
   GEMINI_BASE_URL?: string
+  // Rapor için yerel saat dilimi (opsiyonel; varsayılan Europe/Istanbul).
+  REPORT_TZ?: string
 }
 
 interface ChatRequest {
@@ -53,6 +56,11 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
   const now = new Date().toISOString()
   const prev = await getState(env.TASKS_KV, now)
+
+  // "rapor" → deterministik rapor; Gemini'ye gitmez, durumu değiştirmez, KV yazılmaz.
+  if (isReportCommand(message)) {
+    return json({ reply: buildReport(prev, now, env.REPORT_TZ), state: prev })
+  }
 
   let result
   if (env.GEMINI_API_KEY) {

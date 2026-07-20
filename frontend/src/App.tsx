@@ -135,7 +135,7 @@ export default function App() {
           <div className="chat__empty">
             <p>Bir şeyler yaz — ne yapman gerektiğini söyle.</p>
             <p className="chat__hint">
-              Örn: "market alışverişi: süt, ekmek, yumurta" · "bitirdim süt" · "rapor".
+              Örn: "market alışverişi: süt, ekmek, yumurta" · "bitirdim süt" · "rapor" (gün sonu özeti).
             </p>
           </div>
         ) : (

@@ -31,8 +31,6 @@ Kurallar:
 - Uygun olduğunda görevi "subtasks" ile alt adımlara böl.
 - Kullanıcı bir şeyi bitirdiğini söylerse ("bitirdim", "tamamladım", "yaptım") ilgili görevi
   veya alt görevi done=true yap.
-- Kullanıcı "rapor" isterse görev listesini DEĞİŞTİRME; sadece "reply" alanında kısa bir
-  gün sonu özeti ver.
 - Yeni eklenen görev/alt görevlerde "id" alanını boş bırak (id'yi sistem atar).
 - "reply" kısa, doğal ve samimi olsun.`
 
