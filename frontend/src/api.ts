@@ -1,5 +1,9 @@
 import type { TaskState } from './types'
 
+// Prod'da Worker ayrı bir origin'dedir (*.workers.dev). Build sırasında VITE_API_BASE ile
+// Worker'ın mutlak URL'i verilir. Boşsa (dev) relative kalır ve Vite proxy'si /api'yi Worker'a yönlendirir.
+const API_BASE = (import.meta.env.VITE_API_BASE ?? '').replace(/\/+$/, '')
+
 interface ChatResponse {
   reply: string
   state: TaskState
@@ -23,7 +27,7 @@ async function parseError(res: Response): Promise<string> {
  * (Lokal geliştirmede /api istekleri Vite proxy'si üzerinden Worker'a gider.)
  */
 export async function sendChat(message: string): Promise<ChatResponse> {
-  const res = await fetch('/api/chat', {
+  const res = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ message }),
@@ -37,7 +41,7 @@ export async function sendChat(message: string): Promise<ChatResponse> {
 
 /** Sayfa açılışında mevcut görev durumunu çeker. */
 export async function fetchState(): Promise<TaskState> {
-  const res = await fetch('/api/state')
+  const res = await fetch(`${API_BASE}/api/state`)
   if (!res.ok) {
     const detail = await parseError(res)
     throw new Error(detail || `Durum alınamadı (HTTP ${res.status})`)

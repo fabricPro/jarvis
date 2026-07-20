@@ -18,9 +18,17 @@
       "id": "REPLACE_WITH_KV_NAMESPACE_ID",
       "preview_id": "REPLACE_WITH_KV_PREVIEW_ID"
     }
-  ]
+  ],
 
-  // GEMINI_API_KEY (ileride) bir secret olarak tutulacak — burada TANIMLANMAZ:
+  // Gizli OLMAYAN yapılandırma. Frontend'i (Pages) deploy ettikten sonra CORS_ORIGIN'i
+  // Pages URL'ine daraltın ve Worker'ı yeniden deploy edin. Ayarlanmazsa CORS "*" olur.
+  "vars": {
+    "CORS_ORIGIN": "*"
+    // "GEMINI_MODEL": "gemini-2.0-flash",
+    // "REPORT_TZ": "Europe/Istanbul"
+  }
+
+  // GEMINI_API_KEY bir SECRET'tır — burada TANIMLANMAZ:
   //   npx wrangler secret put GEMINI_API_KEY
   // Lokal geliştirme için worker/.dev.vars dosyasına konur (git'e girmez).
 }

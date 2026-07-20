@@ -8,9 +8,10 @@ Cloudflare üstünde çalışan kişisel bir "sohbetle todo" asistanı.
 - **Model:** Google Gemini Flash — API anahtarı Worker'da **secret** olarak durur,
   frontend'e asla düşmez.
 
-> Durum: **Adım 4 — Gemini reducer + gruplama/alt görev.** `GEMINI_API_KEY` tanımlıysa
-> `/api/chat` mesajı Gemini'ye gönderir, güncel görev listesi JSON olarak döner ve KV'ye yazılır.
-> Anahtar **yoksa** deterministik bir fallback reducer devreye girer (anahtarsız geliştirme için).
+> Durum: **Gemini reducer + gruplama/alt görev + deterministik rapor + deploy akışı.**
+> `GEMINI_API_KEY` tanımlıysa `/api/chat` mesajı Gemini'ye gönderir, güncel görev listesi JSON
+> olarak döner ve KV'ye yazılır. Anahtar **yoksa** deterministik bir fallback reducer devreye
+> girer. `"rapor"` komutu Worker'da deterministik olarak üretilir. Dağıtım için bkz. [DEPLOY.md](./DEPLOY.md).
 
 ## Yapı
 
@@ -51,18 +52,20 @@ npm run typecheck
 npm run build     # frontend/dist üretilir (PWA manifesti + service worker dahil)
 ```
 
-## Cloudflare kurulumu (ileriki adımlar)
+## Deploy
 
-Bu adımda gerçek kaynaklar oluşturulmaz; `worker/wrangler.jsonc` içinde KV binding'i
-**placeholder** id ile durur. Dağıtımdan önce:
+Cloudflare'e dağıtım (Worker + Pages, cross-origin + CORS) için adım adım runbook:
+**[DEPLOY.md](./DEPLOY.md)**.
+
+Kısa özet (kökten):
 
 ```bash
-# KV namespace oluştur ve dönen id'leri wrangler.jsonc'a yaz
-npx wrangler kv namespace create TASKS_KV
-npx wrangler kv namespace create TASKS_KV --preview
+npx wrangler login
+# worker/wrangler.jsonc içine gerçek KV id'lerini yaz (bkz. DEPLOY.md #1)
+cd worker && npx wrangler secret put GEMINI_API_KEY && cd ..
 
-# Gemini API anahtarını Worker secret'ı olarak ekle
-npx wrangler secret put GEMINI_API_KEY
+npm run deploy:api                                              # Worker → *.workers.dev
+VITE_API_BASE="https://jarvis-api.<sub>.workers.dev" npm run deploy:web   # Pages → *.pages.dev
 ```
 
 ### Gemini yapılandırması

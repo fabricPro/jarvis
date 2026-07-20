@@ -21,6 +21,26 @@ export interface Env {
   GEMINI_BASE_URL?: string
   // Rapor için yerel saat dilimi (opsiyonel; varsayılan Europe/Istanbul).
   REPORT_TZ?: string
+  // İzin verilen frontend origin('ler)i (virgülle ayrılmış) — cross-origin dağıtım için.
+  // Ayarlanmazsa "*" (herkese açık). Prod'da Pages URL'ine daraltılması önerilir.
+  CORS_ORIGIN?: string
+}
+
+function corsHeaders(env: Env, request: Request): Record<string, string> {
+  const configured = env.CORS_ORIGIN?.trim()
+  let allowOrigin = '*'
+  if (configured && configured !== '*') {
+    const list = configured.split(',').map((s) => s.trim()).filter(Boolean)
+    const reqOrigin = request.headers.get('origin') ?? ''
+    allowOrigin = list.includes(reqOrigin) ? reqOrigin : (list[0] ?? '*')
+  }
+  return {
+    'access-control-allow-origin': allowOrigin,
+    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'access-control-allow-headers': 'content-type',
+    'access-control-max-age': '86400',
+    vary: 'Origin',
+  }
 }
 
 interface ChatRequest {
@@ -92,25 +112,41 @@ async function handleState(request: Request, env: Env): Promise<Response> {
   return json({ state })
 }
 
+async function route(request: Request, env: Env, url: URL): Promise<Response> {
+  // GET /api/health → sağlık kontrolü
+  if (url.pathname === '/api/health' && request.method === 'GET') {
+    return json({ ok: true })
+  }
+
+  // GET /api/state → mevcut görev durumu
+  if (url.pathname === '/api/state') {
+    return handleState(request, env)
+  }
+
+  // /api/chat → mesajı işle, durumu güncelle
+  if (url.pathname === '/api/chat') {
+    return handleChat(request, env)
+  }
+
+  return json({ error: 'not_found' }, { status: 404 })
+}
+
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
+    const isApi = url.pathname.startsWith('/api/')
 
-    // GET /api/health → sağlık kontrolü
-    if (url.pathname === '/api/health' && request.method === 'GET') {
-      return json({ ok: true })
+    // Cross-origin frontend için CORS.
+    if (isApi) {
+      const cors = corsHeaders(env, request)
+      if (request.method === 'OPTIONS') {
+        return new Response(null, { status: 204, headers: cors })
+      }
+      const res = await route(request, env, url)
+      for (const [k, v] of Object.entries(cors)) res.headers.set(k, v)
+      return res
     }
 
-    // GET /api/state → mevcut görev durumu
-    if (url.pathname === '/api/state') {
-      return handleState(request, env)
-    }
-
-    // /api/chat → mesajı işle, durumu güncelle
-    if (url.pathname === '/api/chat') {
-      return handleChat(request, env)
-    }
-
-    return json({ error: 'not_found' }, { status: 404 })
+    return route(request, env, url)
   },
 } satisfies ExportedHandler<Env>
