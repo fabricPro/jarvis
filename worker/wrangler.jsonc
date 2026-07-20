@@ -23,7 +23,7 @@
   // Gizli OLMAYAN yapılandırma. Frontend'i (Pages) deploy ettikten sonra CORS_ORIGIN'i
   // Pages URL'ine daraltın ve Worker'ı yeniden deploy edin. Ayarlanmazsa CORS "*" olur.
   "vars": {
-    "CORS_ORIGIN": "*"
+    "CORS_ORIGIN": "https://jarvis-1bb.pages.dev"
     // "GEMINI_MODEL": "gemini-3.5-flash",   // kod varsayılanı; başka modele geçmek için aç
     // "REPORT_TZ": "Europe/Istanbul"
   }
