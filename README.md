@@ -78,7 +78,7 @@ Lokal geliştirmede secret'lar `worker/.dev.vars` içine konur (git'e girmez):
 ```
 GEMINI_API_KEY="..."
 # opsiyonel:
-# GEMINI_MODEL="gemini-2.5-flash"          # varsayılan: gemini-2.0-flash
+# GEMINI_MODEL="gemini-2.5-flash"          # varsayılan: gemini-2.5-flash
 # GEMINI_BASE_URL="https://..."            # varsayılan: Google Generative Language API
 ```
 

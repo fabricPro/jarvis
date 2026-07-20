@@ -18,7 +18,7 @@ interface GeminiEnv {
 }
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com'
-const DEFAULT_MODEL = 'gemini-2.0-flash'
+const DEFAULT_MODEL = 'gemini-2.5-flash'
 
 const SYSTEM_INSTRUCTION = `Sen kişisel bir "sohbetle todo" asistanının görev reducer'ısın.
 Sana mevcut görev durumu (JSON) ve kullanıcının serbest metin mesajı verilir.

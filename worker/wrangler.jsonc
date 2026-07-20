@@ -24,7 +24,7 @@
   // Pages URL'ine daraltın ve Worker'ı yeniden deploy edin. Ayarlanmazsa CORS "*" olur.
   "vars": {
     "CORS_ORIGIN": "*"
-    // "GEMINI_MODEL": "gemini-2.0-flash",
+    // "GEMINI_MODEL": "gemini-2.5-flash",   // kod varsayılanı; başka modele geçmek için aç
     // "REPORT_TZ": "Europe/Istanbul"
   }
 
