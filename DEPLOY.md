@@ -31,6 +31,16 @@ npx wrangler secret put GEMINI_API_KEY
 
 > Anahtar yoksa Worker deterministik fallback reducer ile çalışır; yine de deploy edilebilir.
 
+Arayüzü şifreyle korumak için (opsiyonel, önerilir):
+
+```bash
+cd worker
+npx wrangler secret put APP_PASSWORD
+```
+
+> Ayarlıysa arayüz kilitlenir ve her API isteği doğru `x-app-password` header'ı ister
+> (`/api/health` hariç), yanlışsa 401.
+
 ## 3) Worker'ı deploy et
 
 Kökten:

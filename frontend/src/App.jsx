@@ -1,16 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ============================================================
-// JARVIS — TASARIM REFERANSI (birebir)
-// Bu dosyanın AMACI: görünümü %100 sabitlemek.
-// CSS, markup ve metinler AYNEN korunmalı.
-// Sadece aşağıdaki 4 "adaptör" fonksiyonu kendi Worker API'ne bağla.
-//
-// >>> CLAUDE CODE'A NOT:
-//   - CSS bloğunu, className'leri, renk tokenlarını, fontları,
-//     .core / .topbar / .panel / mono göstergeleri, tüm metinleri DEĞİŞTİRME.
-//   - Sadece loadState / saveState / askJarvis / makeReport gövdelerini
-//     mevcut Worker uç noktalarına göre doldur. Görsele dokunma.
+// JARVIS — TASARIM REFERANSI (birebir) + eklenen özellikler
+// Mevcut tasarımın CSS/markup/metinleri korunur; şifre kapısı,
+// model seçici ve elle düzenleme yeni temalı öğeler olarak eklenir.
 // ============================================================
 
 const API = import.meta.env.VITE_API_BASE || ""; // örn: https://jarvis-api.<sub>.workers.dev
@@ -19,10 +12,18 @@ const uid = () =>
 const now = () =>
   new Date().toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
 
-// ---------- VERİ ŞEKLİ ÇEVİRİCİLERİ (Worker <-> tasarım) ----------
-// Worker durumu {tasks:[{id,title,group,done,subtasks}], log:[{at,text}]} tutar.
-// Bu tasarım {groups:[{id,name,tasks}], log:[{id,time,text}]} bekler.
+// ---------- Oturum (şifre) + model — modül seviyesi köprü ----------
+let AUTH_PASS = (typeof localStorage !== "undefined" && localStorage.getItem("jarvis.pass")) || "";
+let SEL_MODEL = (typeof localStorage !== "undefined" && localStorage.getItem("jarvis.model")) || "";
+const setAuthPass = (p) => { AUTH_PASS = p || ""; };
+const setSelModel = (m) => { SEL_MODEL = m || ""; };
+function authHeaders(extra) {
+  const h = { ...(extra || {}) };
+  if (AUTH_PASS) h["x-app-password"] = AUTH_PASS;
+  return h;
+}
 
+// ---------- VERİ ŞEKLİ ÇEVİRİCİLERİ (Worker <-> tasarım) ----------
 function fmtTime(at) {
   if (!at) return now();
   try {
@@ -31,7 +32,6 @@ function fmtTime(at) {
     return now();
   }
 }
-
 function tasksToGroups(tasks) {
   const order = [];
   const byName = new Map();
@@ -50,11 +50,9 @@ function tasksToGroups(tasks) {
   }
   return order.map((name) => ({ id: "g_" + name, name, tasks: byName.get(name) }));
 }
-
 function serverLogToDesign(log) {
   return (log || []).map((l) => ({ id: uid(), time: fmtTime(l.at), text: l.text, at: l.at }));
 }
-
 function groupsToTasks(groups) {
   return (groups || []).flatMap((g) =>
     (g.tasks || []).map((t) => ({
@@ -68,23 +66,19 @@ function groupsToTasks(groups) {
 }
 
 // ---------- ADAPTÖRLER (Worker'a bağlı) ----------
-
-// Kayıtlı durumu getir. Dönüş: {groups:[], log:[], messages:[]}
 async function loadState() {
-  const r = await fetch(`${API}/api/state`);
+  const r = await fetch(`${API}/api/state`, { headers: authHeaders() });
   if (!r.ok) return { groups: [], log: [], messages: [] };
   const data = await r.json(); // { state: { tasks, log } }
   const st = data.state || {};
-  // Sohbet geçmişi sunucuda tutulmuyor; oturum boyunca istemcide kalır.
   return { groups: tasksToGroups(st.tasks), log: serverLogToDesign(st.log), messages: [] };
 }
 
-// Durumu kaydet (elle işaretleme, yeni gün vb. için) → PUT /api/state.
 async function saveState(state) {
   try {
     await fetch(`${API}/api/state`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         tasks: groupsToTasks(state.groups),
         log: (state.log || []).map((l) => ({ at: l.at || new Date().toISOString(), text: l.text })),
@@ -93,13 +87,12 @@ async function saveState(state) {
   } catch (e) {}
 }
 
-// Kullanıcı mesajını Worker'a gönder; Gemini SUNUCUDA çalışır, anahtar Worker'da.
-// Dönüş: {reply, groups, log}
-async function askJarvis({ message }) {
+// Gemini SUNUCUDA çalışır, anahtar Worker'da. Son konuşma "history" olarak gider.
+async function askJarvis({ message, history }) {
   const r = await fetch(`${API}/api/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ message, history, model: SEL_MODEL || undefined }),
   });
   if (!r.ok) throw new Error("api " + r.status);
   const data = await r.json(); // { reply, state }
@@ -107,16 +100,97 @@ async function askJarvis({ message }) {
   return { reply: data.reply, groups: tasksToGroups(st.tasks), log: serverLogToDesign(st.log) };
 }
 
-// Gün sonu raporu → /api/chat "rapor" (Worker'da deterministik üretilir). Dönüş: string.
+// Gün sonu raporu → /api/chat "rapor" (Worker'da deterministik). Dönüş: string.
 async function makeReport() {
   const r = await fetch(`${API}/api/chat`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ message: "rapor" }),
   });
   if (!r.ok) throw new Error("api " + r.status);
   const d = await r.json(); // { reply, state }
   return typeof d === "string" ? d : d.reply || d.text || "";
+}
+
+// Seçilebilir modeller. Dönüş: {models:[], default}
+async function fetchModels() {
+  const r = await fetch(`${API}/api/models`, { headers: authHeaders() });
+  if (!r.ok) throw new Error("api " + r.status);
+  return await r.json();
+}
+
+// Şifre doğrulama: verilen şifreyle GET /api/state (200=doğru, 401=yanlış).
+async function verifyAuth(pass) {
+  try {
+    const r = await fetch(`${API}/api/state`, { headers: pass ? { "x-app-password": pass } : {} });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
+// ============================================================
+// Görev/alt görev düzenleyici (elle ekleme + düzenleme)
+function TaskEditor({ task, initialGroup, groupNames, onSave, onCancel, onDelete }) {
+  const known = groupNames.includes(initialGroup) ? initialGroup : "";
+  const [title, setTitle] = useState(task?.title || "");
+  const [groupSel, setGroupSel] = useState(known || (groupNames[0] || "__new__"));
+  const [newGroup, setNewGroup] = useState(known ? "" : (initialGroup || ""));
+  const [subs, setSubs] = useState((task?.subtasks || []).map((s) => ({ id: s.id, title: s.title, done: !!s.done })));
+  const [newSub, setNewSub] = useState("");
+
+  const addSub = () => {
+    const t = newSub.trim();
+    if (!t) return;
+    setSubs((a) => [...a, { id: uid(), title: t, done: false }]);
+    setNewSub("");
+  };
+  const save = () => {
+    const t = title.trim();
+    if (!t) return;
+    const group = (groupSel === "__new__" ? newGroup.trim() : groupSel) || "Genel";
+    onSave({
+      title: t,
+      group,
+      subtasks: subs.map((s) => ({ id: s.id, title: s.title.trim(), done: s.done })).filter((s) => s.title),
+    });
+  };
+
+  return (
+    <div className="tedit">
+      <input placeholder="Görev başlığı" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
+      <select value={groupSel} onChange={(e) => setGroupSel(e.target.value)}>
+        {groupNames.map((n) => (
+          <option key={n} value={n}>{n}</option>
+        ))}
+        <option value="__new__">+ Yeni grup…</option>
+      </select>
+      {groupSel === "__new__" && (
+        <input placeholder="Yeni grup adı" value={newGroup} onChange={(e) => setNewGroup(e.target.value)} />
+      )}
+      {subs.length > 0 && <span className="lbl">Alt görevler</span>}
+      {subs.map((s, i) => (
+        <div key={s.id} className="subedit">
+          <input value={s.title} onChange={(e) => setSubs((a) => a.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} />
+          <button className="ticon del" title="Sil" onClick={() => setSubs((a) => a.filter((_, j) => j !== i))}>×</button>
+        </div>
+      ))}
+      <div className="subedit">
+        <input
+          placeholder="Alt görev ekle…"
+          value={newSub}
+          onChange={(e) => setNewSub(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSub(); } }}
+        />
+        <button className="ticon" title="Ekle" onClick={addSub}>+</button>
+      </div>
+      <div className="erow">
+        {onDelete && <button className="btnmini danger" onClick={onDelete}>Sil</button>}
+        <button className="btnmini" onClick={onCancel}>İptal</button>
+        <button className="btnmini ok" onClick={save}>Kaydet</button>
+      </div>
+    </div>
+  );
 }
 
 // ============================================================
@@ -132,7 +206,36 @@ export default function App() {
   const [clock, setClock] = useState(now());
   const chatEnd = useRef(null);
 
+  // oturum + model + düzenleme
+  const [authed, setAuthed] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [passInput, setPassInput] = useState("");
+  const [authErr, setAuthErr] = useState(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [models, setModels] = useState([]);
+  const [model, setModel] = useState(() => (typeof localStorage !== "undefined" && localStorage.getItem("jarvis.model")) || "");
+  const [adding, setAdding] = useState(false);
+  const [editId, setEditId] = useState(null);
+
+  // Açılışta oturumu doğrula (şifre yoksa sunucu auth kapalıysa direkt girer).
   useEffect(() => {
+    (async () => {
+      const stored = localStorage.getItem("jarvis.pass") || "";
+      const ok = await verifyAuth(stored);
+      if (ok) { setAuthPass(stored); setAuthed(true); }
+      else if (stored) { localStorage.removeItem("jarvis.pass"); }
+      setAuthReady(true);
+    })();
+  }, []);
+
+  // model seçimini kalıcı yap (adaptörler modül köprüsünden okur)
+  useEffect(() => {
+    if (model) { setSelModel(model); localStorage.setItem("jarvis.model", model); }
+  }, [model]);
+
+  // Giriş yapılınca durumu + modelleri yükle
+  useEffect(() => {
+    if (!authed) return;
     (async () => {
       try {
         const s = await loadState();
@@ -142,7 +245,14 @@ export default function App() {
       } catch (e) {}
       finally { setLoaded(true); }
     })();
-  }, []);
+    fetchModels()
+      .then((info) => {
+        setModels(info.models || []);
+        setModel((cur) => (cur && (info.models || []).includes(cur) ? cur : info.default));
+      })
+      .catch(() => {});
+  }, [authed]);
+
   useEffect(() => {
     if (!loaded) return;
     saveState({ groups, log, messages });
@@ -215,10 +325,70 @@ export default function App() {
     setGroups([]); setLog([]); setMessages([]);
   };
 
+  // --- elle düzenleme yardımcıları (istemci state; saveState effect'i PUT eder) ---
+  const flatten = (gs) => gs.flatMap((g) => g.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, subtasks: t.subtasks || [], group: g.name })));
+  const rebuild = (flat) => {
+    const order = [];
+    const byName = new Map();
+    for (const t of flat) {
+      const name = (t.group && String(t.group).trim()) || "Genel";
+      if (!byName.has(name)) { byName.set(name, []); order.push(name); }
+      byName.get(name).push({ id: t.id, title: t.title, done: t.done, subtasks: t.subtasks || [] });
+    }
+    return order.map((name) => ({ id: "g_" + name, name, tasks: byName.get(name) }));
+  };
+  const addTaskFull = (d) => setGroups((gs) => rebuild([...flatten(gs), { id: uid(), title: d.title, done: false, subtasks: d.subtasks || [], group: d.group }]));
+  const updateTaskFull = (tid, d) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, title: d.title, group: d.group, subtasks: d.subtasks || [] }))));
+  const deleteTaskFull = (tid) => setGroups((gs) => rebuild(flatten(gs).filter((t) => t.id !== tid)));
+
+  const lock = () => { localStorage.removeItem("jarvis.pass"); setAuthPass(""); setAuthed(false); setLoaded(false); setPassInput(""); };
+  const doLogin = async () => {
+    const p = passInput;
+    if (!p || authBusy) return;
+    setAuthBusy(true); setAuthErr(null);
+    const ok = await verifyAuth(p);
+    if (ok) { localStorage.setItem("jarvis.pass", p); setAuthPass(p); setAuthed(true); }
+    else { setAuthErr("Şifre hatalı"); }
+    setAuthBusy(false);
+  };
+
   const openCount = groups.reduce((n, g) => n + g.tasks.filter((t) => !t.done).length, 0);
+  const groupNames = groups.map((g) => g.name);
   const today = new Date().toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long" });
 
   const onKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
+
+  // ---- Şifre kapısı ----
+  if (!authed) {
+    return (
+      <div className="jv">
+        <style>{CSS}</style>
+        <div className="gate">
+          <div className="core"><span className="ring" /><span className="ring inner" /><span className="dot" /></div>
+          <div className="gatebox">
+            <h1 className="gatetitle">JARVIS</h1>
+            <p className="gatesub">Kimlik Doğrulama</p>
+            {!authReady ? (
+              <p className="gatesub">bağlanıyor…</p>
+            ) : (
+              <>
+                <input
+                  type="password"
+                  placeholder="Şifre"
+                  value={passInput}
+                  onChange={(e) => setPassInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") doLogin(); }}
+                  autoFocus
+                />
+                {authErr && <p className="gateerr">{authErr}</p>}
+                <button onClick={doLogin} disabled={authBusy || !passInput}>{authBusy ? "…" : "GİRİŞ"}</button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="jv">
@@ -246,8 +416,16 @@ export default function App() {
             </div>
           </div>
           <div className="hactions">
+            {models.length > 0 && (
+              <select className="modelsel" value={model} onChange={(e) => setModel(e.target.value)} disabled={busy} title="Model" aria-label="Model">
+                {models.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            )}
             <button className="link" onClick={() => report()} disabled={busy}>rapor</button>
             <button className="link" onClick={newDay}>yeni gün</button>
+            <button className="link" onClick={lock}>kilitle</button>
           </div>
         </header>
 
@@ -266,32 +444,64 @@ export default function App() {
             {tab === "plan" ? (
               !loaded ? (
                 <p className="empty">bağlanıyor…</p>
-              ) : groups.length === 0 ? (
-                <p className="empty">Sizi dinliyorum, Efendim. Bugün ne var?</p>
+              ) : groups.length === 0 && !adding ? (
+                <>
+                  <p className="empty">Sizi dinliyorum, Efendim. Bugün ne var?</p>
+                  <button className="addbtn" onClick={() => setAdding(true)}>+ Görev ekle</button>
+                </>
               ) : (
-                groups.map((g) => (
-                  <div key={g.id} className="group">
-                    <p className="gname">{g.name}</p>
-                    {g.tasks.map((t) => (
-                      <div key={t.id} className={"task" + (t.done ? " done" : "")}>
-                        <button className="tick2" onClick={() => toggle(g.id, t.id)}>{t.done && "✓"}</button>
-                        <div className="tbody">
-                          <span className="ttitle">{t.title}</span>
-                          {t.subtasks?.length > 0 && (
-                            <ul className="subs">
-                              {t.subtasks.map((s) => (
-                                <li key={s.id} className={s.done ? "sd" : ""}>
-                                  <button className="sc" onClick={() => toggle(g.id, t.id, s.id)}>{s.done ? "✓" : "–"}</button>
-                                  {s.title}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ))
+                <>
+                  {groups.map((g) => (
+                    <div key={g.id} className="group">
+                      <p className="gname">{g.name}</p>
+                      {g.tasks.map((t) =>
+                        editId === t.id ? (
+                          <TaskEditor
+                            key={t.id}
+                            task={t}
+                            initialGroup={g.name}
+                            groupNames={groupNames}
+                            onCancel={() => setEditId(null)}
+                            onSave={(d) => { updateTaskFull(t.id, d); setEditId(null); }}
+                            onDelete={() => { deleteTaskFull(t.id); setEditId(null); }}
+                          />
+                        ) : (
+                          <div key={t.id} className={"task" + (t.done ? " done" : "")}>
+                            <button className="tick2" onClick={() => toggle(g.id, t.id)}>{t.done && "✓"}</button>
+                            <div className="tbody">
+                              <span className="ttitle">{t.title}</span>
+                              {t.subtasks?.length > 0 && (
+                                <ul className="subs">
+                                  {t.subtasks.map((s) => (
+                                    <li key={s.id} className={s.done ? "sd" : ""}>
+                                      <button className="sc" onClick={() => toggle(g.id, t.id, s.id)}>{s.done ? "✓" : "–"}</button>
+                                      {s.title}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                            <div className="tactions">
+                              <button className="ticon" title="Düzenle" onClick={() => setEditId(t.id)}>✎</button>
+                              <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  ))}
+                  {adding ? (
+                    <TaskEditor
+                      task={null}
+                      initialGroup=""
+                      groupNames={groupNames}
+                      onCancel={() => setAdding(false)}
+                      onSave={(d) => { addTaskFull(d); setAdding(false); }}
+                    />
+                  ) : (
+                    <button className="addbtn" onClick={() => setAdding(true)}>+ Görev ekle</button>
+                  )}
+                </>
               )
             ) : log.length === 0 ? (
               <p className="empty">Kayıt yok. "Şunu bitirdim" derseniz buraya işlerim.</p>
@@ -448,4 +658,50 @@ const CSS = `
 
 @media (max-width:520px){.wrap{padding:20px 16px 130px}.hi{font-size:20px}}
 @media (prefers-reduced-motion:reduce){.core .dot,.online i,.core.busy .ring{animation:none!important}}
+
+/* ===== EKLENEN ÖĞELER (yeni sınıflar; mevcut kurallar değişmedi) ===== */
+.gate{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:40px 20px}
+.gate .core{width:52px;height:52px}
+.gatebox{display:flex;flex-direction:column;gap:10px;width:100%;max-width:280px}
+.gatetitle{font-family:var(--serif);font-weight:500;font-size:22px;letter-spacing:.24em;text-align:center;margin:0}
+.gatesub{font-family:var(--mono);font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--mut);text-align:center;margin:0}
+.gate input{padding:12px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line);
+  color:var(--txt);font-family:var(--sans);font-size:15px;outline:none;text-align:center;letter-spacing:.15em}
+.gate input:focus{border-color:rgba(224,163,74,.55);box-shadow:0 0 0 3px rgba(224,163,74,.08)}
+.gate button{padding:11px;border:none;border-radius:12px;cursor:pointer;
+  background:radial-gradient(circle at 40% 35%,var(--goldhi),var(--gold));color:#151310;
+  font-weight:700;font-size:13px;letter-spacing:.14em;box-shadow:0 0 14px rgba(224,163,74,.35)}
+.gate button:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+.gateerr{color:#d98a6a;font-size:12px;text-align:center;font-family:var(--mono);letter-spacing:.05em;margin:0}
+
+.modelsel{background:var(--panel);border:1px solid var(--line);color:var(--txt);font-family:var(--mono);
+  font-size:11px;letter-spacing:.03em;padding:4px 6px;border-radius:6px;cursor:pointer;max-width:150px}
+.modelsel:focus{outline:none;border-color:rgba(224,163,74,.55)}
+.modelsel:disabled{opacity:.5;cursor:wait}
+
+.tactions{display:flex;gap:4px;align-items:center;flex:none;opacity:.45;transition:.15s}
+.task:hover .tactions{opacity:1}
+.ticon{background:none;border:none;color:var(--mut);cursor:pointer;font-size:13px;padding:3px;line-height:1}
+.ticon:hover{color:var(--gold)}
+.ticon.del:hover{color:#d98a6a}
+
+.addbtn{margin:2px 0 6px;background:none;border:1px dashed var(--line);color:var(--mut);cursor:pointer;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;padding:9px 10px;border-radius:6px;
+  width:100%;text-transform:uppercase}
+.addbtn:hover{border-color:rgba(224,163,74,.45);color:var(--gold)}
+
+.tedit{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid rgba(224,163,74,.30);
+  border-radius:6px;margin:6px 0;background:rgba(30,26,21,.45)}
+.tedit input,.tedit select{padding:8px 10px;border-radius:6px;background:var(--panel);border:1px solid var(--line);
+  color:var(--txt);font-family:var(--sans);font-size:14px;outline:none;width:100%}
+.tedit input:focus,.tedit select:focus{border-color:rgba(224,163,74,.55)}
+.tedit .lbl{font-family:var(--mono);font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--mut)}
+.subedit{display:flex;gap:6px;align-items:center}
+.subedit input{flex:1}
+.erow{display:flex;gap:8px;justify-content:flex-end;margin-top:2px}
+.btnmini{background:none;border:1px solid var(--line);color:var(--txt);cursor:pointer;font-size:12px;
+  padding:6px 12px;border-radius:6px;font-family:var(--sans)}
+.btnmini.ok{background:var(--gold);border-color:var(--gold);color:#151310;font-weight:700}
+.btnmini.danger{color:#d98a6a;border-color:rgba(217,138,106,.4)}
+.btnmini:hover{border-color:var(--gold)}
 `;

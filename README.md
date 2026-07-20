@@ -73,10 +73,21 @@ VITE_API_BASE="https://jarvis-api.<sub>.workers.dev" npm run deploy:web   # Page
 `/api/chat` reducer'ı `GEMINI_API_KEY` **tanımlıysa** Gemini Flash'ı kullanır; tanımlı
 değilse deterministik fallback reducer çalışır (basit ekle / "bitirdim X" / "rapor").
 
+### Şifre koruması (opsiyonel)
+
+`APP_PASSWORD` secret'ı ayarlıysa arayüz kilitlidir: kullanıcı şifreyle girer ve her API
+isteği `x-app-password` header'ı taşır (`/api/health` hariç), yanlışsa **401**. Ayarlı
+değilse auth kapalıdır (lokal/dev). Şifre yalnızca Worker'da doğrulanır, bundle'a girmez.
+
+```bash
+cd worker && npx wrangler secret put APP_PASSWORD
+```
+
 Lokal geliştirmede secret'lar `worker/.dev.vars` içine konur (git'e girmez):
 
 ```
 GEMINI_API_KEY="..."
+APP_PASSWORD="..."                          # arayüz şifresi (opsiyonel)
 # opsiyonel:
 # GEMINI_MODEL="gemini-3.5-flash"          # varsayılan: gemini-3.5-flash
 # GEMINI_BASE_URL="https://..."            # varsayılan: Google Generative Language API

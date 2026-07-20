@@ -26,6 +26,9 @@ export interface Env {
   // İzin verilen frontend origin('ler)i (virgülle ayrılmış) — cross-origin dağıtım için.
   // Ayarlanmazsa "*" (herkese açık). Prod'da Pages URL'ine daraltılması önerilir.
   CORS_ORIGIN?: string
+  // Uygulama şifresi (secret). Ayarlıysa /api/* istekleri (health hariç) doğru
+  // x-app-password header'ı taşımalı; aksi halde 401. Ayarlı değilse auth kapalı (dev).
+  APP_PASSWORD?: string
 }
 
 function corsHeaders(env: Env, request: Request): Record<string, string> {
@@ -39,7 +42,7 @@ function corsHeaders(env: Env, request: Request): Record<string, string> {
   return {
     'access-control-allow-origin': allowOrigin,
     'access-control-allow-methods': 'GET, POST, PUT, OPTIONS',
-    'access-control-allow-headers': 'content-type',
+    'access-control-allow-headers': 'content-type, x-app-password',
     'access-control-max-age': '86400',
     vary: 'Origin',
   }
@@ -48,6 +51,7 @@ function corsHeaders(env: Env, request: Request): Record<string, string> {
 interface ChatRequest {
   message: string
   model?: string
+  history?: string[]
 }
 
 function json(data: unknown, init?: ResponseInit): Response {
@@ -92,9 +96,14 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
     const requested = typeof body?.model === 'string' ? body.model.trim() : ''
     const model = models.includes(requested) ? requested : defaultModel
 
+    // Son konuşma bağlamı (frontend'ten): ["Kullanıcı: ...", "JARVIS: ...", ...]
+    const history = Array.isArray(body?.history)
+      ? body.history.filter((x): x is string => typeof x === 'string')
+      : []
+
     // Gemini yolu — hata olursa durumu değiştirmeden 502 dön.
     try {
-      result = await geminiReduce(env, prev, message, now, model)
+      result = await geminiReduce(env, prev, message, now, model, history)
     } catch (err) {
       const detail = err instanceof Error ? err.message : 'bilinmeyen hata'
       return json(
@@ -179,6 +188,14 @@ export default {
       if (request.method === 'OPTIONS') {
         return new Response(null, { status: 204, headers: cors })
       }
+
+      // Şifre koruması: APP_PASSWORD ayarlıysa /api/health hariç doğru header şart.
+      if (env.APP_PASSWORD && url.pathname !== '/api/health') {
+        if (request.headers.get('x-app-password') !== env.APP_PASSWORD) {
+          return json({ error: 'unauthorized' }, { status: 401, headers: cors })
+        }
+      }
+
       const res = await route(request, env, url)
       for (const [k, v] of Object.entries(cors)) res.headers.set(k, v)
       return res
