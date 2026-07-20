@@ -14,8 +14,8 @@ export default defineConfig({
         short_name: 'Jarvis',
         description: 'Kişisel sohbetle todo asistanı',
         lang: 'tr',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        theme_color: '#151310',
+        background_color: '#151310',
         display: 'standalone',
         start_url: '/',
         icons: [

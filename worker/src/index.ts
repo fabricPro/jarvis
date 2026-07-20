@@ -8,9 +8,11 @@
  */
 
 import { geminiReduce, resolveModels } from './gemini'
+import { applyClientState, type ModelTask } from './reconcile'
 import { reduce } from './reducer'
 import { buildReport, isReportCommand } from './report'
 import { getState, putState } from './store'
+import type { LogEntry } from './types'
 
 export interface Env {
   // Görev durumunu tutan KV namespace'i.
@@ -36,7 +38,7 @@ function corsHeaders(env: Env, request: Request): Record<string, string> {
   }
   return {
     'access-control-allow-origin': allowOrigin,
-    'access-control-allow-methods': 'GET, POST, OPTIONS',
+    'access-control-allow-methods': 'GET, POST, PUT, OPTIONS',
     'access-control-allow-headers': 'content-type',
     'access-control-max-age': '86400',
     vary: 'Origin',
@@ -109,13 +111,37 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
   return json({ reply: result.reply, state: result.state })
 }
 
+interface StatePutBody {
+  tasks?: ModelTask[]
+  log?: LogEntry[]
+}
+
 async function handleState(request: Request, env: Env): Promise<Response> {
-  if (request.method !== 'GET') {
-    return json({ error: 'method_not_allowed' }, { status: 405 })
-  }
   const now = new Date().toISOString()
-  const state = await getState(env.TASKS_KV, now)
-  return json({ state })
+
+  // GET → mevcut durum
+  if (request.method === 'GET') {
+    const state = await getState(env.TASKS_KV, now)
+    return json({ state })
+  }
+
+  // PUT → istemci durumunu uygula (elle ✓ işaretleme, "yeni gün")
+  if (request.method === 'PUT') {
+    let body: StatePutBody
+    try {
+      body = (await request.json()) as StatePutBody
+    } catch {
+      return json({ error: 'invalid_json' }, { status: 400 })
+    }
+    const prev = await getState(env.TASKS_KV, now)
+    const clientTasks = Array.isArray(body?.tasks) ? body.tasks : []
+    const clientLog = Array.isArray(body?.log) ? body.log : prev.log
+    const state = applyClientState(prev, clientTasks, clientLog, now)
+    await putState(env.TASKS_KV, state)
+    return json({ state })
+  }
+
+  return json({ error: 'method_not_allowed' }, { status: 405 })
 }
 
 async function route(request: Request, env: Env, url: URL): Promise<Response> {

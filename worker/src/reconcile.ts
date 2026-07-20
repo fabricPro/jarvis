@@ -1,4 +1,4 @@
-import type { Subtask, Task, TaskState } from './types'
+import type { LogEntry, Subtask, Task, TaskState } from './types'
 
 /** Gemini'nin döndürdüğü ham görev şekli (id ve timestamp Worker'da atanır). */
 export interface ModelSubtask {
@@ -67,4 +67,48 @@ export function reconcile(prev: TaskState, modelTasks: ModelTask[], now: string)
     log: [...prev.log, ...logAdditions],
     updatedAt: now,
   }
+}
+
+/**
+ * İstemcinin gönderdiği tam durumu (elle ✓ işaretleme, "yeni gün") uygular.
+ *
+ * reconcile'dan farkı: log İSTEMCİDEN gelenle TAM DEĞİŞTİRİLİR (yeni gün log'u
+ * temizleyebilsin diye) ve otomatik "Tamamlandı" log kaydı EKLENMEZ (elle işaretleme
+ * sessizce yapılır). createdAt id ile eşleşerek korunur; done false→true geçişinde
+ * completedAt damgalanır.
+ */
+export function applyClientState(
+  prev: TaskState,
+  clientTasks: ModelTask[],
+  clientLog: LogEntry[],
+  now: string,
+): TaskState {
+  const prevById = new Map(prev.tasks.map((t) => [t.id, t]))
+
+  const tasks: Task[] = clientTasks.map((ct) => {
+    const existing = ct.id ? prevById.get(ct.id) : undefined
+    const prevSubById = new Map((existing?.subtasks ?? []).map((s) => [s.id, s]))
+
+    const subtasks: Subtask[] = (ct.subtasks ?? []).map((cs) => {
+      const prevSub = cs.id ? prevSubById.get(cs.id) : undefined
+      return {
+        id: prevSub?.id ?? cs.id ?? crypto.randomUUID(),
+        title: cs.title,
+        done: cs.done,
+        completedAt: cs.done ? (prevSub?.completedAt ?? now) : undefined,
+      }
+    })
+
+    return {
+      id: existing?.id ?? ct.id ?? crypto.randomUUID(),
+      title: ct.title,
+      group: ct.group,
+      done: ct.done,
+      createdAt: existing?.createdAt ?? now,
+      completedAt: ct.done ? (existing?.completedAt ?? now) : undefined,
+      subtasks,
+    }
+  })
+
+  return { tasks, log: clientLog, updatedAt: now }
 }
