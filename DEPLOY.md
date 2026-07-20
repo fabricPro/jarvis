@@ -49,18 +49,28 @@ curl https://jarvis-api.<subdomain>.workers.dev/api/health   # {"ok":true}
 
 ## 4) Pages projesi (ilk sefer)
 
+Production branch'i açıkça `main` ver (interaktif istemde yanlış değer girmemek için):
+
 ```bash
-npx wrangler pages project create jarvis
+npx wrangler pages project create jarvis --production-branch main
 ```
 
-(veya Cloudflare panelinden bir Pages projesi oluştur; proje adı `jarvis`.)
+`deploy:web` her zaman `--branch main` ile deploy ettiği için deployment'lar production sayılır.
 
 ## 5) Frontend'i build edip deploy et
 
 Worker URL'ini build değişkeni olarak vererek deploy et (kökten):
 
 ```bash
+# Linux/macOS:
 VITE_API_BASE="https://jarvis-api.<subdomain>.workers.dev" npm run deploy:web
+
+# Windows cmd (iki ayrı satır):
+set VITE_API_BASE=https://jarvis-api.<subdomain>.workers.dev
+npm run deploy:web
+
+# Windows PowerShell:
+$env:VITE_API_BASE="https://jarvis-api.<subdomain>.workers.dev"; npm run deploy:web
 ```
 
 Bu, `VITE_API_BASE` ile build alır (frontend Worker'a bu URL üzerinden gider) ve
