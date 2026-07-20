@@ -13,6 +13,8 @@ frontend/dev-dist/
 # env
 .env
 .env.*
+# Prod frontend yapılandırması (herkese açık Worker URL'i) — commit edilir
+!frontend/.env.production
 
 # logs
 *.log

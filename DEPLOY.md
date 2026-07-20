@@ -69,23 +69,17 @@ npx wrangler pages project create jarvis --production-branch main
 
 ## 5) Frontend'i build edip deploy et
 
-Worker URL'ini build değişkeni olarak vererek deploy et (kökten):
+Frontend'in konuşacağı Worker URL'i `frontend/.env.production` içinde tutulur, o yüzden
+env değişkeni ayarlamaya gerek yok (kökten):
 
 ```bash
-# Linux/macOS:
-VITE_API_BASE="https://jarvis-api.<subdomain>.workers.dev" npm run deploy:web
-
-# Windows cmd (iki ayrı satır):
-set VITE_API_BASE=https://jarvis-api.<subdomain>.workers.dev
 npm run deploy:web
-
-# Windows PowerShell:
-$env:VITE_API_BASE="https://jarvis-api.<subdomain>.workers.dev"; npm run deploy:web
 ```
 
-Bu, `VITE_API_BASE` ile build alır (frontend Worker'a bu URL üzerinden gider) ve
-`frontend/dist`'i Pages'e yükler. Çıktıdaki Pages URL'ini not et, örn.
-`https://jarvis.pages.dev`.
+> Worker URL'in `frontend/.env.production`'dakinden farklıysa önce o dosyayı güncelle
+> (`VITE_API_BASE=https://jarvis-api.<subdomain>.workers.dev`), sonra `npm run deploy:web`.
+
+Çıktıdaki Pages URL'ini not et, örn. `https://jarvis.pages.dev`.
 
 ## 6) CORS'u daralt (önerilir)
 
@@ -106,12 +100,13 @@ npm run deploy:api
 ## Güncelleme akışı
 
 - Sadece API değişti → `npm run deploy:api`
-- Sadece frontend değişti → `VITE_API_BASE="https://jarvis-api...workers.dev" npm run deploy:web`
+- Sadece frontend değişti → `npm run deploy:web`
 
 ## Notlar
 
 - `GEMINI_API_KEY` yalnızca Worker secret'ıdır; frontend build'ine **girmez**.
-- `VITE_API_BASE` boş bırakılırsa (lokal `npm run dev:web`) istekler relative kalır ve
-  Vite proxy'si `/api`'yi lokal Worker'a (`wrangler dev`, :8787) yönlendirir.
+- Prod API tabanı `frontend/.env.production` (`VITE_API_BASE`) içindedir. Lokal `npm run dev:web`
+  bu dosyayı yüklemez (mode=development) → istekler relative kalır ve Vite proxy'si `/api`'yi
+  lokal Worker'a (`wrangler dev`, :8787) yönlendirir.
 - Preview KV (`preview_id`) yalnızca `wrangler dev --remote` ve preview dağıtımları içindir;
   yerel `wrangler dev` diske yazan yerel bir simülasyon kullanır.

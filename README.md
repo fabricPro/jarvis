@@ -64,9 +64,12 @@ npx wrangler login
 # worker/wrangler.jsonc içine gerçek KV id'lerini yaz (bkz. DEPLOY.md #1)
 cd worker && npx wrangler secret put GEMINI_API_KEY && cd ..
 
-npm run deploy:api                                              # Worker → *.workers.dev
-VITE_API_BASE="https://jarvis-api.<sub>.workers.dev" npm run deploy:web   # Pages → *.pages.dev
+npm run deploy:api     # Worker → *.workers.dev
+npm run deploy:web     # Pages → *.pages.dev  (API tabanı frontend/.env.production'dan gelir)
 ```
+
+> Frontend'in konuştuğu Worker URL'i `frontend/.env.production` içindedir; URL değişirse
+> orayı güncelle. Böylece `deploy:web` için env değişkeni ayarlamak gerekmez (cmd/PowerShell farkı yok).
 
 ### Gemini yapılandırması
 
