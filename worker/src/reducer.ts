@@ -41,6 +41,7 @@ export function reduce(prev: TaskState, message: string, now: string): ReduceRes
     title: text,
     done: false,
     createdAt: now,
+    subtasks: [],
   }
   const state: TaskState = {
     ...prev,

@@ -5,11 +5,12 @@ Cloudflare üstünde çalışan kişisel bir "sohbetle todo" asistanı.
 - **Frontend:** React + Vite PWA → Cloudflare Pages (`frontend/`)
 - **Backend/API:** tek bir Cloudflare Worker (`worker/`)
 - **Veri:** Cloudflare KV
-- **Model (ileride):** Google Gemini Flash — API anahtarı Worker'da **secret** olarak durur,
+- **Model:** Google Gemini Flash — API anahtarı Worker'da **secret** olarak durur,
   frontend'e asla düşmez.
 
-> Durum: **Adım 1 — proje iskeleti.** Gemini entegrasyonu ve reducer mantığı henüz eklenmedi.
-> Worker şu an yalnızca bir health-check ve stub bir `/api/chat` içerir.
+> Durum: **Adım 4 — Gemini reducer + gruplama/alt görev.** `GEMINI_API_KEY` tanımlıysa
+> `/api/chat` mesajı Gemini'ye gönderir, güncel görev listesi JSON olarak döner ve KV'ye yazılır.
+> Anahtar **yoksa** deterministik bir fallback reducer devreye girer (anahtarsız geliştirme için).
 
 ## Yapı
 
@@ -60,12 +61,23 @@ Bu adımda gerçek kaynaklar oluşturulmaz; `worker/wrangler.jsonc` içinde KV b
 npx wrangler kv namespace create TASKS_KV
 npx wrangler kv namespace create TASKS_KV --preview
 
-# Gemini API anahtarını Worker secret'ı olarak ekle (ileride)
+# Gemini API anahtarını Worker secret'ı olarak ekle
 npx wrangler secret put GEMINI_API_KEY
 ```
+
+### Gemini yapılandırması
+
+`/api/chat` reducer'ı `GEMINI_API_KEY` **tanımlıysa** Gemini Flash'ı kullanır; tanımlı
+değilse deterministik fallback reducer çalışır (basit ekle / "bitirdim X" / "rapor").
 
 Lokal geliştirmede secret'lar `worker/.dev.vars` içine konur (git'e girmez):
 
 ```
 GEMINI_API_KEY="..."
+# opsiyonel:
+# GEMINI_MODEL="gemini-2.5-flash"          # varsayılan: gemini-2.0-flash
+# GEMINI_BASE_URL="https://..."            # varsayılan: Google Generative Language API
 ```
+
+`GEMINI_BASE_URL` yalnızca test (mock sunucu) veya self-host/proxy senaryoları içindir;
+normalde ayarlanmaz. API anahtarı yalnızca Worker `env` üzerinden okunur, frontend'e düşmez.

@@ -1,11 +1,20 @@
 /** Görev ve durum veri modeli. */
 
-export interface Task {
+export interface Subtask {
   id: string
   title: string
   done: boolean
+  completedAt?: string // ISO 8601
+}
+
+export interface Task {
+  id: string
+  title: string
+  group?: string // grup adı (opsiyonel)
+  done: boolean
   createdAt: string // ISO 8601
   completedAt?: string // ISO 8601
+  subtasks: Subtask[]
 }
 
 export interface LogEntry {

@@ -1,17 +1,23 @@
 /**
  * Jarvis API — Cloudflare Worker
  *
- * Adım 3 (KV): görev durumu KV'de tutulur. /api/chat mesajı okur → reducer → KV'ye yazar.
- * Reducer şimdilik deterministik bir PLACEHOLDER; Gemini entegrasyonu sonraki adımda gelecek.
+ * Adım 4 (Gemini): /api/chat mesajı okur → reducer → KV'ye yazar.
+ *   - GEMINI_API_KEY tanımlıysa reducer Gemini Flash'tır (grup + alt görev).
+ *   - Tanımlı değilse deterministik fallback reducer devreye girer (anahtarsız dev için).
+ * API anahtarı yalnızca Worker env'inde durur; frontend'e asla düşmez.
  */
 
+import { geminiReduce } from './gemini'
 import { reduce } from './reducer'
 import { getState, putState } from './store'
 
 export interface Env {
   // Görev durumunu tutan KV namespace'i.
   TASKS_KV: KVNamespace
-  // GEMINI_API_KEY: string   // ileride secret olarak eklenecek
+  // Gemini (opsiyonel — secret olarak eklenir; yoksa deterministik fallback çalışır).
+  GEMINI_API_KEY?: string
+  GEMINI_MODEL?: string
+  GEMINI_BASE_URL?: string
 }
 
 interface ChatRequest {
@@ -47,10 +53,26 @@ async function handleChat(request: Request, env: Env): Promise<Response> {
 
   const now = new Date().toISOString()
   const prev = await getState(env.TASKS_KV, now)
-  const { state, reply } = reduce(prev, message, now)
-  await putState(env.TASKS_KV, state)
 
-  return json({ reply, state })
+  let result
+  if (env.GEMINI_API_KEY) {
+    // Gemini yolu — hata olursa durumu değiştirmeden 502 dön.
+    try {
+      result = await geminiReduce(env, prev, message, now)
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : 'bilinmeyen hata'
+      return json(
+        { error: 'gemini_failed', message: `Gemini yanıt veremedi: ${detail}` },
+        { status: 502 },
+      )
+    }
+  } else {
+    // Anahtar yok — deterministik fallback.
+    result = reduce(prev, message, now)
+  }
+
+  await putState(env.TASKS_KV, result.state)
+  return json({ reply: result.reply, state: result.state })
 }
 
 async function handleState(request: Request, env: Env): Promise<Response> {

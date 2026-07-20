@@ -7,12 +7,21 @@ export interface ChatMessage {
 }
 
 /** Worker'daki görev modeliyle aynı şekil. */
-export interface Task {
+export interface Subtask {
   id: string
   title: string
   done: boolean
+  completedAt?: string
+}
+
+export interface Task {
+  id: string
+  title: string
+  group?: string
+  done: boolean
   createdAt: string
   completedAt?: string
+  subtasks: Subtask[]
 }
 
 export interface LogEntry {

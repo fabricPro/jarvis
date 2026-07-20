@@ -1,10 +1,60 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { fetchState, sendChat } from './api'
-import type { ChatMessage, TaskState } from './types'
+import type { ChatMessage, Task, TaskState } from './types'
 
 function newId(): string {
   return crypto.randomUUID()
+}
+
+interface TaskGroup {
+  name?: string
+  tasks: Task[]
+}
+
+/** Görevleri grup adına göre, ekleme sırasını koruyarak grupla (grupsuzlar başta). */
+function groupTasks(tasks: Task[]): TaskGroup[] {
+  const order: (string | undefined)[] = []
+  const byGroup = new Map<string | undefined, Task[]>()
+  for (const t of tasks) {
+    const key = t.group || undefined
+    if (!byGroup.has(key)) {
+      byGroup.set(key, [])
+      order.push(key)
+    }
+    byGroup.get(key)!.push(t)
+  }
+  // grupsuz kova (undefined) en başa
+  order.sort((a, b) => (a === undefined ? -1 : b === undefined ? 1 : 0))
+  return order.map((name) => ({ name, tasks: byGroup.get(name)! }))
+}
+
+function TaskRow({ task }: { task: Task }) {
+  const total = task.subtasks.length
+  const done = task.subtasks.filter((s) => s.done).length
+  return (
+    <li className={`task ${task.done ? 'task--done' : ''}`}>
+      <div className="task__row">
+        <span className="task__mark">{task.done ? '✓' : '○'}</span>
+        <span className="task__title">{task.title}</span>
+        {total > 0 && (
+          <span className="task__progress">
+            {done}/{total}
+          </span>
+        )}
+      </div>
+      {total > 0 && (
+        <ul className="subtasks">
+          {task.subtasks.map((s) => (
+            <li key={s.id} className={`subtask ${s.done ? 'subtask--done' : ''}`}>
+              <span className="task__mark">{s.done ? '✓' : '○'}</span>
+              <span className="task__title">{s.title}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  )
 }
 
 export default function App() {
@@ -16,7 +66,6 @@ export default function App() {
 
   const listEndRef = useRef<HTMLDivElement>(null)
 
-  // Açılışta mevcut görev durumunu çek.
   useEffect(() => {
     fetchState()
       .then(setTaskState)
@@ -49,8 +98,9 @@ export default function App() {
   }
 
   const tasks = taskState?.tasks ?? []
-  const openTasks = tasks.filter((t) => !t.done)
-  const doneTasks = tasks.filter((t) => t.done)
+  const groups = useMemo(() => groupTasks(tasks), [tasks])
+  const openCount = tasks.filter((t) => !t.done).length
+  const doneCount = tasks.filter((t) => t.done).length
   const isEmpty = messages.length === 0
 
   return (
@@ -59,7 +109,7 @@ export default function App() {
         <h1 className="app__title">Jarvis</h1>
         <span className="app__subtitle">Sohbetle Todo</span>
         <span className="app__counter">
-          {openTasks.length} açık · {doneTasks.length} bitti
+          {openCount} açık · {doneCount} bitti
         </span>
       </header>
 
@@ -67,14 +117,16 @@ export default function App() {
         {tasks.length === 0 ? (
           <p className="tasks__empty">Henüz görev yok.</p>
         ) : (
-          <ul className="tasks__list">
-            {[...openTasks, ...doneTasks].map((t) => (
-              <li key={t.id} className={`task ${t.done ? 'task--done' : ''}`}>
-                <span className="task__mark">{t.done ? '✓' : '○'}</span>
-                <span className="task__title">{t.title}</span>
-              </li>
-            ))}
-          </ul>
+          groups.map((g) => (
+            <div key={g.name ?? '__none__'} className="group">
+              {g.name && <h2 className="group__title">{g.name}</h2>}
+              <ul className="tasks__list">
+                {g.tasks.map((t) => (
+                  <TaskRow key={t.id} task={t} />
+                ))}
+              </ul>
+            </div>
+          ))
         )}
       </section>
 
@@ -83,8 +135,7 @@ export default function App() {
           <div className="chat__empty">
             <p>Bir şeyler yaz — ne yapman gerektiğini söyle.</p>
             <p className="chat__hint">
-              Örn: "süt al" · "bitirdim süt" · "rapor". Gemini henüz bağlı değil; görevler
-              basit kurallarla işlenir ve KV'de saklanır.
+              Örn: "market alışverişi: süt, ekmek, yumurta" · "bitirdim süt" · "rapor".
             </p>
           </div>
         ) : (
