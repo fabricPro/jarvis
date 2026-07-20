@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+frontend/dev-dist/
+
+# cloudflare / wrangler
+.wrangler/
+.dev.vars
+.dev.vars.*
+
+# env
+.env
+.env.*
+
+# logs
+*.log
+npm-debug.log*
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp

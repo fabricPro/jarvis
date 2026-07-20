@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "jarvis-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-01",
+  "observability": {
+    "enabled": true
+  },
+
+  // Görev durumunu tutmak için KV. Aşağıdaki id'ler PLACEHOLDER'dır.
+  // Dağıtımdan önce gerçek namespace oluşturup id'leri buraya yazın:
+  //   npx wrangler kv namespace create TASKS_KV
+  //   npx wrangler kv namespace create TASKS_KV --preview
+  // Lokal `wrangler dev` bu id'lere ihtiyaç duymadan yerel simülasyon kullanır.
+  "kv_namespaces": [
+    {
+      "binding": "TASKS_KV",
+      "id": "REPLACE_WITH_KV_NAMESPACE_ID",
+      "preview_id": "REPLACE_WITH_KV_PREVIEW_ID"
+    }
+  ]
+
+  // GEMINI_API_KEY (ileride) bir secret olarak tutulacak — burada TANIMLANMAZ:
+  //   npx wrangler secret put GEMINI_API_KEY
+  // Lokal geliştirme için worker/.dev.vars dosyasına konur (git'e girmez).
+}

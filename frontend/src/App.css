@@ -1,0 +1,56 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.app__title {
+  margin: 0;
+  font-size: 2.75rem;
+  letter-spacing: -0.02em;
+}
+
+.app__subtitle {
+  margin: 0.25rem 0 0;
+  color: #94a3b8;
+}
+
+.app__card {
+  max-width: 28rem;
+  padding: 1.5rem;
+  border: 1px solid #1e293b;
+  border-radius: 0.875rem;
+  background: #111c33;
+  line-height: 1.6;
+}
+
+.app__badge {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: #1d4ed8;
+  color: #eff6ff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}

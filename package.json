@@ -1,0 +1,16 @@
+{
+  "name": "jarvis",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cloudflare üstünde çalışan kişisel 'sohbetle todo' asistanı",
+  "workspaces": [
+    "frontend",
+    "worker"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w frontend",
+    "dev:api": "npm run dev -w worker",
+    "build": "npm run build -w frontend",
+    "typecheck": "npm run typecheck -w frontend && npm run typecheck -w worker"
+  }
+}
