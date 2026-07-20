@@ -100,13 +100,27 @@ async function saveState(state) {
 }
 
 // Gemini SUNUCUDA çalışır, anahtar Worker'da. Son konuşma "history" olarak gider.
+async function apiErrorMessage(r) {
+  // Worker hata gövdesi { error, message } döndürür; gerçek nedeni çıkar.
+  try {
+    const d = await r.json();
+    return d.message || d.error || "";
+  } catch {
+    return "";
+  }
+}
+
 async function askJarvis({ message, history }) {
   const r = await fetch(`${API}/api/chat`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ message, history, model: SEL_MODEL || undefined }),
   });
-  if (!r.ok) throw new Error("api " + r.status);
+  if (!r.ok) {
+    if (r.status === 401) throw new Error("Oturum doğrulanamadı. 'kilitle' deyip şifreyle tekrar girin.");
+    const detail = await apiErrorMessage(r);
+    throw new Error(detail || `İstek başarısız (HTTP ${r.status})`);
+  }
   const data = await r.json(); // { reply, state }
   const st = data.state || {};
   return { reply: data.reply, groups: tasksToGroups(st.tasks), log: serverLogToDesign(st.log) };
@@ -296,7 +310,11 @@ export default function App() {
       if (Array.isArray(res.log)) setLog(res.log.map((l) => ({ ...l, time: l.time || now() })));
       setMessages((m) => [...m, { role: "assistant", text: res.reply || "Tamamdır, güncelledim." }]);
     } catch (e) {
-      setMessages((m) => [...m, { role: "assistant", text: "Bunu tam çözemedim Efendim, biraz farklı ifade eder misiniz?" }]);
+      const detail = e instanceof Error && e.message ? e.message : "";
+      const text = detail
+        ? "Bir sorun oldu Efendim: " + detail
+        : "Bunu tam çözemedim Efendim, biraz farklı ifade eder misiniz?";
+      setMessages((m) => [...m, { role: "assistant", text }]);
     } finally {
       setBusy(false);
     }
