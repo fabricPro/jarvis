@@ -1,12 +1,15 @@
 /**
  * Jarvis API — Cloudflare Worker
  *
- * Adım 2 (sohbet akışı): /api/chat artık POST kabul eder ve SAHTE (mock) bir
- * asistan yanıtı döndürür. Reducer + Gemini + KV yazımı sonraki adımlarda gelecek.
+ * Adım 3 (KV): görev durumu KV'de tutulur. /api/chat mesajı okur → reducer → KV'ye yazar.
+ * Reducer şimdilik deterministik bir PLACEHOLDER; Gemini entegrasyonu sonraki adımda gelecek.
  */
 
+import { reduce } from './reducer'
+import { getState, putState } from './store'
+
 export interface Env {
-  // Görev durumunu tutacak KV namespace'i (henüz kullanılmıyor).
+  // Görev durumunu tutan KV namespace'i.
   TASKS_KV: KVNamespace
   // GEMINI_API_KEY: string   // ileride secret olarak eklenecek
 }
@@ -25,7 +28,7 @@ function json(data: unknown, init?: ResponseInit): Response {
   })
 }
 
-async function handleChat(request: Request): Promise<Response> {
+async function handleChat(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') {
     return json({ error: 'method_not_allowed' }, { status: 405 })
   }
@@ -42,16 +45,25 @@ async function handleChat(request: Request): Promise<Response> {
     return json({ error: 'empty_message', message: 'Mesaj boş olamaz.' }, { status: 400 })
   }
 
-  // SAHTE yanıt — gerçek reducer/Gemini ileride burada devreye girecek.
-  const reply =
-    `Mesajını aldım: "${message}". ` +
-    'Şu an sahte (mock) yanıt dönüyorum — Gemini entegrasyonu henüz eklenmedi.'
+  const now = new Date().toISOString()
+  const prev = await getState(env.TASKS_KV, now)
+  const { state, reply } = reduce(prev, message, now)
+  await putState(env.TASKS_KV, state)
 
-  return json({ reply })
+  return json({ reply, state })
+}
+
+async function handleState(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'GET') {
+    return json({ error: 'method_not_allowed' }, { status: 405 })
+  }
+  const now = new Date().toISOString()
+  const state = await getState(env.TASKS_KV, now)
+  return json({ state })
 }
 
 export default {
-  async fetch(request: Request, _env: Env, _ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url)
 
     // GET /api/health → sağlık kontrolü
@@ -59,9 +71,14 @@ export default {
       return json({ ok: true })
     }
 
-    // /api/chat → sohbet (şimdilik mock)
+    // GET /api/state → mevcut görev durumu
+    if (url.pathname === '/api/state') {
+      return handleState(request, env)
+    }
+
+    // /api/chat → mesajı işle, durumu güncelle
     if (url.pathname === '/api/chat') {
-      return handleChat(request)
+      return handleChat(request, env)
     }
 
     return json({ error: 'not_found' }, { status: 404 })

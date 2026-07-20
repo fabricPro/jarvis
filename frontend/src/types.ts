@@ -5,3 +5,23 @@ export interface ChatMessage {
   role: ChatRole
   text: string
 }
+
+/** Worker'daki görev modeliyle aynı şekil. */
+export interface Task {
+  id: string
+  title: string
+  done: boolean
+  createdAt: string
+  completedAt?: string
+}
+
+export interface LogEntry {
+  at: string
+  text: string
+}
+
+export interface TaskState {
+  tasks: Task[]
+  log: LogEntry[]
+  updatedAt: string
+}

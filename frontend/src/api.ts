@@ -1,29 +1,47 @@
+import type { TaskState } from './types'
+
 interface ChatResponse {
   reply: string
+  state: TaskState
+}
+
+interface StateResponse {
+  state: TaskState
+}
+
+async function parseError(res: Response): Promise<string> {
+  try {
+    const data = (await res.json()) as { message?: string; error?: string }
+    return data.message ?? data.error ?? ''
+  } catch {
+    return ''
+  }
 }
 
 /**
- * Worker'ın /api/chat uç noktasına mesaj gönderir ve asistan yanıtını döndürür.
+ * Worker'ın /api/chat uç noktasına mesaj gönderir; asistan yanıtını ve güncel durumu döndürür.
  * (Lokal geliştirmede /api istekleri Vite proxy'si üzerinden Worker'a gider.)
  */
-export async function sendChat(message: string): Promise<string> {
+export async function sendChat(message: string): Promise<ChatResponse> {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ message }),
   })
-
   if (!res.ok) {
-    let detail = ''
-    try {
-      const data = (await res.json()) as { message?: string; error?: string }
-      detail = data.message ?? data.error ?? ''
-    } catch {
-      // yanıt gövdesi JSON değilse yoksay
-    }
+    const detail = await parseError(res)
     throw new Error(detail || `İstek başarısız (HTTP ${res.status})`)
   }
+  return (await res.json()) as ChatResponse
+}
 
-  const data = (await res.json()) as ChatResponse
-  return data.reply
+/** Sayfa açılışında mevcut görev durumunu çeker. */
+export async function fetchState(): Promise<TaskState> {
+  const res = await fetch('/api/state')
+  if (!res.ok) {
+    const detail = await parseError(res)
+    throw new Error(detail || `Durum alınamadı (HTTP ${res.status})`)
+  }
+  const data = (await res.json()) as StateResponse
+  return data.state
 }

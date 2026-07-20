@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { sendChat } from './api'
-import type { ChatMessage } from './types'
+import { fetchState, sendChat } from './api'
+import type { ChatMessage, TaskState } from './types'
 
 function newId(): string {
   return crypto.randomUUID()
@@ -9,13 +9,20 @@ function newId(): string {
 
 export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [taskState, setTaskState] = useState<TaskState | null>(null)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const listEndRef = useRef<HTMLDivElement>(null)
 
-  // Yeni mesaj geldikçe en alta kaydır.
+  // Açılışta mevcut görev durumunu çek.
+  useEffect(() => {
+    fetchState()
+      .then(setTaskState)
+      .catch((err) => setError(err instanceof Error ? err.message : 'Durum alınamadı.'))
+  }, [])
+
   useEffect(() => {
     listEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading])
@@ -25,15 +32,15 @@ export default function App() {
     const text = input.trim()
     if (!text || loading) return
 
-    const userMsg: ChatMessage = { id: newId(), role: 'user', text }
-    setMessages((prev) => [...prev, userMsg])
+    setMessages((prev) => [...prev, { id: newId(), role: 'user', text }])
     setInput('')
     setError(null)
     setLoading(true)
 
     try {
-      const reply = await sendChat(text)
+      const { reply, state } = await sendChat(text)
       setMessages((prev) => [...prev, { id: newId(), role: 'assistant', text: reply }])
+      setTaskState(state)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bilinmeyen bir hata oluştu.')
     } finally {
@@ -41,6 +48,9 @@ export default function App() {
     }
   }
 
+  const tasks = taskState?.tasks ?? []
+  const openTasks = tasks.filter((t) => !t.done)
+  const doneTasks = tasks.filter((t) => t.done)
   const isEmpty = messages.length === 0
 
   return (
@@ -48,14 +58,33 @@ export default function App() {
       <header className="app__header">
         <h1 className="app__title">Jarvis</h1>
         <span className="app__subtitle">Sohbetle Todo</span>
+        <span className="app__counter">
+          {openTasks.length} açık · {doneTasks.length} bitti
+        </span>
       </header>
+
+      <section className="tasks" aria-label="Görevler">
+        {tasks.length === 0 ? (
+          <p className="tasks__empty">Henüz görev yok.</p>
+        ) : (
+          <ul className="tasks__list">
+            {[...openTasks, ...doneTasks].map((t) => (
+              <li key={t.id} className={`task ${t.done ? 'task--done' : ''}`}>
+                <span className="task__mark">{t.done ? '✓' : '○'}</span>
+                <span className="task__title">{t.title}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <main className="chat">
         {isEmpty && !loading ? (
           <div className="chat__empty">
             <p>Bir şeyler yaz — ne yapman gerektiğini söyle.</p>
             <p className="chat__hint">
-              Not: Gemini henüz bağlı değil, asistan şimdilik sahte yanıt döner.
+              Örn: "süt al" · "bitirdim süt" · "rapor". Gemini henüz bağlı değil; görevler
+              basit kurallarla işlenir ve KV'de saklanır.
             </p>
           </div>
         ) : (
