@@ -32,6 +32,17 @@ function fmtTime(at) {
     return now();
   }
 }
+function fmtDate(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const opts = { day: "numeric", month: "short" };
+    if (d.getFullYear() !== new Date().getFullYear()) opts.year = "numeric";
+    return d.toLocaleDateString("tr-TR", opts);
+  } catch {
+    return "";
+  }
+}
 function tasksToGroups(tasks) {
   const order = [];
   const byName = new Map();
@@ -45,6 +56,7 @@ function tasksToGroups(tasks) {
       id: t.id,
       title: t.title,
       done: !!t.done,
+      createdAt: t.createdAt,
       subtasks: (t.subtasks || []).map((s) => ({ id: s.id, title: s.title, done: !!s.done })),
     });
   }
@@ -326,18 +338,18 @@ export default function App() {
   };
 
   // --- elle düzenleme yardımcıları (istemci state; saveState effect'i PUT eder) ---
-  const flatten = (gs) => gs.flatMap((g) => g.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, subtasks: t.subtasks || [], group: g.name })));
+  const flatten = (gs) => gs.flatMap((g) => g.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, createdAt: t.createdAt, subtasks: t.subtasks || [], group: g.name })));
   const rebuild = (flat) => {
     const order = [];
     const byName = new Map();
     for (const t of flat) {
       const name = (t.group && String(t.group).trim()) || "Genel";
       if (!byName.has(name)) { byName.set(name, []); order.push(name); }
-      byName.get(name).push({ id: t.id, title: t.title, done: t.done, subtasks: t.subtasks || [] });
+      byName.get(name).push({ id: t.id, title: t.title, done: t.done, createdAt: t.createdAt, subtasks: t.subtasks || [] });
     }
     return order.map((name) => ({ id: "g_" + name, name, tasks: byName.get(name) }));
   };
-  const addTaskFull = (d) => setGroups((gs) => rebuild([...flatten(gs), { id: uid(), title: d.title, done: false, subtasks: d.subtasks || [], group: d.group }]));
+  const addTaskFull = (d) => setGroups((gs) => rebuild([...flatten(gs), { id: uid(), title: d.title, done: false, createdAt: new Date().toISOString(), subtasks: d.subtasks || [], group: d.group }]));
   const updateTaskFull = (tid, d) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, title: d.title, group: d.group, subtasks: d.subtasks || [] }))));
   const deleteTaskFull = (tid) => setGroups((gs) => rebuild(flatten(gs).filter((t) => t.id !== tid)));
 
@@ -470,6 +482,7 @@ export default function App() {
                             <button className="tick2" onClick={() => toggle(g.id, t.id)}>{t.done && "✓"}</button>
                             <div className="tbody">
                               <span className="ttitle">{t.title}</span>
+                              {t.createdAt && <span className="tdate">{fmtDate(t.createdAt)}</span>}
                               {t.subtasks?.length > 0 && (
                                 <ul className="subs">
                                   {t.subtasks.map((s) => (
@@ -620,6 +633,7 @@ const CSS = `
 .task.done .tick2{background:var(--gold);border-color:var(--gold);box-shadow:0 0 8px rgba(224,163,74,.4)}
 .tbody{flex:1;min-width:0}
 .ttitle{font-family:var(--serif);font-size:16px;line-height:1.35;word-break:break-word}
+.tdate{display:block;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--mut);opacity:.75}
 .subs{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
 .subs li{display:flex;gap:8px;font-size:13.5px;color:var(--txt);align-items:baseline}
 .subs li.sd{color:var(--mut);text-decoration:line-through}
