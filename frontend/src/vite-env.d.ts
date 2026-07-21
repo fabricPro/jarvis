@@ -9,3 +9,6 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+/** Build sırasında vite.config.ts `define` ile gömülen yapı zamanı damgası. */
+declare const __BUILD_ID__: string

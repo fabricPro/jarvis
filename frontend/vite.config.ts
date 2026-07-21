@@ -4,9 +4,17 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Yapı zamanı damgası — kullanıcı canlı sürümü tek bakışta görür (deploy ulaştı mı?).
+  define: {
+    __BUILD_ID__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+  },
   plugins: [
     react(),
     VitePWA({
+      // Bayat önbellek sorununu kökten bitirmek için service worker'ı kendini imha eden
+      // moda alıyoruz: mevcut SW kaydını siler + önbelleklerini temizler, uygulama her
+      // yüklemede taze gelir (uygulama sunucu-tabanlı; çevrimdışı fayda sağlamıyordu).
+      selfDestroying: true,
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {

@@ -508,7 +508,10 @@ export default function App() {
       {/* sistem çubuğu */}
       <div className="topbar">
         <span>{today}</span>
-        <span className="online"><i /> ÇEVRİMİÇİ</span>
+        <span className="tbright">
+          <span className="ver">v{__BUILD_ID__}</span>
+          <span className="online"><i /> ÇEVRİMİÇİ</span>
+        </span>
       </div>
 
       <div className="wrap">
@@ -711,6 +714,8 @@ const CSS = `
 .topbar{display:flex;justify-content:space-between;align-items:center;
   padding:8px 20px;font-family:var(--mono);font-size:10px;letter-spacing:.22em;
   color:var(--mut);border-bottom:1px solid var(--line);text-transform:uppercase}
+.tbright{display:flex;align-items:center;gap:12px}
+.ver{color:var(--mut);opacity:.7;font-size:9px;letter-spacing:.1em}
 .online{display:flex;align-items:center;gap:6px;color:var(--gold)}
 .online i{width:6px;height:6px;border-radius:50%;background:var(--gold);
   box-shadow:0 0 6px var(--gold);animation:breathe 2.4s ease-in-out infinite}
