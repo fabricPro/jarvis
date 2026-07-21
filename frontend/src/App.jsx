@@ -1,4 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  sortableKeyboardCoordinates,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS as DndCSS } from "@dnd-kit/utilities";
 
 // ============================================================
 // JARVIS — TASARIM REFERANSI (birebir) + eklenen özellikler
@@ -241,6 +257,20 @@ function TaskEditor({ task, initialGroup, groupNames, onSave, onCancel, onDelete
 }
 
 // ============================================================
+// Sürüklenebilir görev satırı sarmalayıcı (render-prop; mevcut markup korunur).
+function SortableTaskRow({ id, disabled, children }) {
+  const { setNodeRef, transform, transition, isDragging, attributes, listeners } = useSortable({ id, disabled });
+  const style = {
+    transform: DndCSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+    zIndex: isDragging ? 5 : undefined,
+    position: isDragging ? "relative" : undefined,
+  };
+  return children({ setNodeRef, style, attributes, listeners });
+}
+
+// ============================================================
 
 export default function App() {
   const [groups, setGroups] = useState([]);
@@ -396,6 +426,25 @@ export default function App() {
   const archiveTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, archived: true }))));
   const unarchiveTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, archived: false }))));
 
+  // --- sürükle-bırak sıralama (yalnız grup içi) ---
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  const onDragEnd = (e) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    setGroups((gs) =>
+      gs.map((g) => {
+        const ids = g.tasks.map((t) => t.id);
+        const from = ids.indexOf(active.id);
+        const to = ids.indexOf(over.id);
+        if (from === -1 || to === -1) return g; // ikisi de aynı grupta değilse dokunma
+        return { ...g, tasks: arrayMove(g.tasks, from, to) };
+      })
+    );
+  };
+
   const lock = () => { localStorage.removeItem("jarvis.pass"); setAuthPass(""); setAuthed(false); setLoaded(false); setPassInput(""); };
   const doLogin = async () => {
     const p = passInput;
@@ -515,50 +564,58 @@ export default function App() {
                   <button className="addbtn" onClick={() => setAdding(true)}>+ Görev ekle</button>
                 </>
               ) : (
-                <>
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
                   {planGroups.map((g) => (
                     <div key={g.id} className="group">
                       <p className="gname">{g.name}</p>
-                      {g.tasks.map((t) =>
-                        editId === t.id ? (
-                          <TaskEditor
-                            key={t.id}
-                            task={t}
-                            initialGroup={g.name}
-                            groupNames={groupNames}
-                            onCancel={() => setEditId(null)}
-                            onSave={(d) => { updateTaskFull(t.id, d); setEditId(null); }}
-                            onDelete={() => { deleteTaskFull(t.id); setEditId(null); }}
-                          />
-                        ) : (
-                          <div key={t.id} className={"task" + (t.done ? " done" : "")}>
-                            <button className="tick2" onClick={() => toggle(g.id, t.id)}>{t.done && "✓"}</button>
-                            <div className="tbody">
-                              <span className="ttitle">{t.title}</span>
-                              {t.done ? (
-                                doneInfo(t) && <span className="tdone">{doneInfo(t)}</span>
+                      <SortableContext items={g.tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+                        {g.tasks.map((t) => (
+                          <SortableTaskRow key={t.id} id={t.id} disabled={editId === t.id}>
+                            {({ setNodeRef, style, attributes, listeners }) =>
+                              editId === t.id ? (
+                                <div ref={setNodeRef} style={style}>
+                                  <TaskEditor
+                                    task={t}
+                                    initialGroup={g.name}
+                                    groupNames={groupNames}
+                                    onCancel={() => setEditId(null)}
+                                    onSave={(d) => { updateTaskFull(t.id, d); setEditId(null); }}
+                                    onDelete={() => { deleteTaskFull(t.id); setEditId(null); }}
+                                  />
+                                </div>
                               ) : (
-                                t.createdAt && <span className="tdate">{fmtDate(t.createdAt)}</span>
-                              )}
-                              {t.subtasks?.length > 0 && (
-                                <ul className="subs">
-                                  {t.subtasks.map((s) => (
-                                    <li key={s.id} className={s.done ? "sd" : ""}>
-                                      <button className="sc" onClick={() => toggle(g.id, t.id, s.id)}>{s.done ? "✓" : "–"}</button>
-                                      {s.title}
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-                            <div className="tactions">
-                              {t.done && <button className="ticon" title="Arşivle" onClick={() => archiveTask(t.id)}>📥</button>}
-                              <button className="ticon" title="Düzenle" onClick={() => setEditId(t.id)}>✎</button>
-                              <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
-                            </div>
-                          </div>
-                        )
-                      )}
+                                <div ref={setNodeRef} style={style} className={"task" + (t.done ? " done" : "")}>
+                                  <button className="thandle" {...attributes} {...listeners} title="Sürükle" aria-label="Sürükle">⠿</button>
+                                  <button className="tick2" onClick={() => toggle(g.id, t.id)}>{t.done && "✓"}</button>
+                                  <div className="tbody">
+                                    <span className="ttitle">{t.title}</span>
+                                    {t.done ? (
+                                      doneInfo(t) && <span className="tdone">{doneInfo(t)}</span>
+                                    ) : (
+                                      t.createdAt && <span className="tdate">{fmtDate(t.createdAt)}</span>
+                                    )}
+                                    {t.subtasks?.length > 0 && (
+                                      <ul className="subs">
+                                        {t.subtasks.map((s) => (
+                                          <li key={s.id} className={s.done ? "sd" : ""}>
+                                            <button className="sc" onClick={() => toggle(g.id, t.id, s.id)}>{s.done ? "✓" : "–"}</button>
+                                            {s.title}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </div>
+                                  <div className="tactions">
+                                    {t.done && <button className="ticon" title="Arşivle" onClick={() => archiveTask(t.id)}>📥</button>}
+                                    <button className="ticon" title="Düzenle" onClick={() => setEditId(t.id)}>✎</button>
+                                    <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
+                                  </div>
+                                </div>
+                              )
+                            }
+                          </SortableTaskRow>
+                        ))}
+                      </SortableContext>
                     </div>
                   ))}
                   {adding ? (
@@ -572,7 +629,7 @@ export default function App() {
                   ) : (
                     <button className="addbtn" onClick={() => setAdding(true)}>+ Görev ekle</button>
                   )}
-                </>
+                </DndContext>
               )
             ) : tab === "gunluk" ? (
               log.length === 0 ? (
@@ -756,19 +813,15 @@ const CSS = `
 .send:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
 
 @media (max-width:520px){
-  /* app-shell: sabit yükseklik, kapaklı panel, büyük chat (yalnız mobil) */
-  .jv{height:100dvh;overflow:hidden}
-  .wrap{padding:16px 14px 0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
-  .panel{flex:none;max-height:40vh;overflow-y:auto;overflow-x:hidden;margin-bottom:14px}
-  .chat{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
-  .dock{position:static;flex:none;background:#151310;border-top:1px solid var(--line);
-    padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
+  /* akışkan düzen (masaüstüyle aynı); yalnızca dar ekran için kozmetik ayarlar */
+  .wrap{padding:16px 14px 130px}
   .hi{font-size:20px}
   .head{flex-wrap:wrap;gap:10px;padding-bottom:12px}
   .hactions{flex-wrap:wrap;gap:12px}
   .modelsel{max-width:130px}
   .tab{padding:8px 10px;font-size:13px}
   .ticon{padding:5px;font-size:14px}
+  .thandle{font-size:17px;padding:4px}
 }
 @media (prefers-reduced-motion:reduce){.core .dot,.online i,.core.busy .ring{animation:none!important}}
 
@@ -791,6 +844,12 @@ const CSS = `
   font-size:11px;letter-spacing:.03em;padding:4px 6px;border-radius:6px;cursor:pointer;max-width:150px}
 .modelsel:focus{outline:none;border-color:rgba(224,163,74,.55)}
 .modelsel:disabled{opacity:.5;cursor:wait}
+
+.thandle{flex:none;background:none;border:none;color:var(--mut);cursor:grab;touch-action:none;
+  font-size:15px;line-height:1;padding:2px 2px;margin-top:1px;opacity:.5;user-select:none;
+  -webkit-user-select:none;align-self:flex-start}
+.thandle:hover{color:var(--gold);opacity:1}
+.thandle:active{cursor:grabbing}
 
 .tactions{display:flex;gap:4px;align-items:center;flex:none;opacity:.45;transition:.15s}
 .task:hover .tactions{opacity:1}
