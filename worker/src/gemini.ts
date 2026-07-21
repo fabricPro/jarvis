@@ -20,8 +20,8 @@ interface GeminiEnv {
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com'
 
 /** Varsayılan model ve kullanıcının UI'dan seçebileceği modeller (allowlist). */
-export const DEFAULT_MODEL = 'gemini-3.5-flash'
-export const MODEL_OPTIONS = ['gemini-3.5-flash', 'gemini-3.1-flash-lite']
+export const DEFAULT_MODEL = 'gemini-3.1-flash-lite'
+export const MODEL_OPTIONS = ['gemini-3.1-flash-lite', 'gemini-3.5-flash']
 
 /** Seçilebilir model listesi ve varsayılan. env.GEMINI_MODEL varsa varsayılan odur ve listeye eklenir. */
 export function resolveModels(env: GeminiEnv): { models: string[]; default: string } {
