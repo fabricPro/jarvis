@@ -271,6 +271,32 @@ function SortableTaskRow({ id, disabled, children }) {
 }
 
 // ============================================================
+// Google Tasks tarzı yerinde düzenleme: metne tıkla → input; Enter/blur kaydeder, Esc iptal.
+function InlineEdit({ initial, onCommit, onCancel, className }) {
+  const [v, setV] = useState(initial);
+  const done = useRef(false);
+  const finish = (commit) => {
+    if (done.current) return;
+    done.current = true;
+    commit ? onCommit(v) : onCancel();
+  };
+  return (
+    <input
+      className={className}
+      value={v}
+      autoFocus
+      onFocus={(e) => e.target.select()}
+      onChange={(e) => setV(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") { e.preventDefault(); finish(true); }
+        else if (e.key === "Escape") { e.preventDefault(); finish(false); }
+      }}
+      onBlur={() => finish(true)}
+    />
+  );
+}
+
+// ============================================================
 // Satır-içi hızlı alt görev girişi (bağlam menüsünden "Alt görev ekle").
 function QuickSub({ onAdd, onClose }) {
   const [v, setV] = useState("");
@@ -320,8 +346,8 @@ export default function App() {
   const [models, setModels] = useState([]);
   const [model, setModel] = useState(() => (typeof localStorage !== "undefined" && localStorage.getItem("jarvis.model")) || "");
   const [adding, setAdding] = useState(false);
-  const [editId, setEditId] = useState(null);
-  const [menu, setMenu] = useState(null); // { tid, gid, x, y } — sağ tık / uzun bas bağlam menüsü
+  const [editing, setEditing] = useState(null); // { tid, sid } — sid null → görev başlığı; dolu → alt görev
+  const [menu, setMenu] = useState(null); // { tid, gid, sid, x, y } — sağ tık / uzun bas bağlam menüsü
   const [quickSubFor, setQuickSubFor] = useState(null); // satır-içi alt görev girişi gösterilecek görev id'si
   const longPressRef = useRef(null);
 
@@ -452,17 +478,35 @@ export default function App() {
     return order.map((name) => ({ id: "g_" + name, name, tasks: byName.get(name) }));
   };
   const addTaskFull = (d) => setGroups((gs) => rebuild([...flatten(gs), { id: uid(), title: d.title, done: false, createdAt: new Date().toISOString(), subtasks: d.subtasks || [], group: d.group }]));
-  const updateTaskFull = (tid, d) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, title: d.title, group: d.group, subtasks: d.subtasks || [] }))));
   const deleteTaskFull = (tid) => setGroups((gs) => rebuild(flatten(gs).filter((t) => t.id !== tid)));
   const archiveTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, archived: true }))));
   const unarchiveTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, archived: false }))));
   const addSubtaskQuick = (tid, title) =>
     setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, subtasks: [...(t.subtasks || []), { id: uid(), title, done: false }] }))));
+  const updateTaskTitle = (tid, title) =>
+    setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, title }))));
+  const updateSubtaskTitle = (tid, sid, title) =>
+    setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, subtasks: (t.subtasks || []).map((s) => (s.id === sid ? { ...s, title } : s)) }))));
+  const deleteSubtask = (tid, sid) =>
+    setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, subtasks: (t.subtasks || []).filter((s) => s.id !== sid) }))));
+
+  // --- yerinde (inline) düzenleme ---
+  const startEdit = (tid, sid = null) => { setMenu(null); setEditing({ tid, sid }); };
+  const cancelEdit = () => setEditing(null);
+  const commitEdit = (tid, sid, val) => {
+    const t = (val || "").trim();
+    if (!t) { setEditing(null); return; } // boş = iptal
+    if (sid) updateSubtaskTitle(tid, sid, t);
+    else updateTaskTitle(tid, t);
+    setEditing(null);
+  };
 
   // --- bağlam menüsü (sağ tık / uzun bas) ---
   const openMenu = (e, gid, tid) => {
     e.preventDefault();
-    setMenu({ tid, gid, x: e.clientX, y: e.clientY });
+    const li = e.target.closest && e.target.closest("li[data-sid]");
+    const sid = li ? li.dataset.sid : null;
+    setMenu({ tid, gid, sid, x: e.clientX, y: e.clientY });
   };
   // Dokunmatikte uzun-bas: 450ms hareketsiz basılı tutunca menü açılır (kaydırma iptal eder).
   const pressHandlers = (gid, tid) => ({
@@ -643,61 +687,66 @@ export default function App() {
                       <p className="gname">{g.name}</p>
                       <SortableContext items={g.tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                         {g.tasks.map((t) => (
-                          <SortableTaskRow key={t.id} id={t.id} disabled={editId === t.id}>
-                            {({ setNodeRef, style, attributes, listeners }) =>
-                              editId === t.id ? (
-                                <div ref={setNodeRef} style={style}>
-                                  <TaskEditor
-                                    task={t}
-                                    initialGroup={g.name}
-                                    groupNames={groupNames}
-                                    onCancel={() => setEditId(null)}
-                                    onSave={(d) => { updateTaskFull(t.id, d); setEditId(null); }}
-                                    onDelete={() => { deleteTaskFull(t.id); setEditId(null); }}
-                                  />
+                          <SortableTaskRow key={t.id} id={t.id} disabled={editing?.tid === t.id}>
+                            {({ setNodeRef, style, attributes, listeners }) => (
+                              <div
+                                ref={setNodeRef}
+                                style={style}
+                                className={"task" + (t.done ? " done" : "")}
+                                onContextMenu={(e) => openMenu(e, g.id, t.id)}
+                                {...pressHandlers(g.id, t.id)}
+                              >
+                                <button className="thandle" {...attributes} {...listeners} title="Sürükle" aria-label="Sürükle">⠿</button>
+                                <button className="tick2" onClick={() => toggle(g.id, t.id)}>{t.done && "✓"}</button>
+                                <div className="tbody">
+                                  {editing?.tid === t.id && editing?.sid == null ? (
+                                    <InlineEdit
+                                      className="inlinein tt"
+                                      initial={t.title}
+                                      onCommit={(v) => commitEdit(t.id, null, v)}
+                                      onCancel={cancelEdit}
+                                    />
+                                  ) : (
+                                    <span className="ttitle" onClick={() => startEdit(t.id, null)}>{t.title}</span>
+                                  )}
+                                  {t.done ? (
+                                    doneInfo(t) && <span className="tdone">{doneInfo(t)}</span>
+                                  ) : (
+                                    t.createdAt && <span className="tdate">{fmtDate(t.createdAt)}</span>
+                                  )}
+                                  {t.subtasks?.length > 0 && (
+                                    <ul className="subs">
+                                      {t.subtasks.map((s) => (
+                                        <li key={s.id} data-sid={s.id} className={s.done ? "sd" : ""}>
+                                          <button className="sc" onClick={() => toggle(g.id, t.id, s.id)}>{s.done ? "✓" : "–"}</button>
+                                          {editing?.tid === t.id && editing?.sid === s.id ? (
+                                            <InlineEdit
+                                              className="inlinein st"
+                                              initial={s.title}
+                                              onCommit={(v) => commitEdit(t.id, s.id, v)}
+                                              onCancel={cancelEdit}
+                                            />
+                                          ) : (
+                                            <span className="sctext" onClick={() => startEdit(t.id, s.id)}>{s.title}</span>
+                                          )}
+                                        </li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                  {quickSubFor === t.id && (
+                                    <QuickSub
+                                      onAdd={(title) => addSubtaskQuick(t.id, title)}
+                                      onClose={() => setQuickSubFor(null)}
+                                    />
+                                  )}
                                 </div>
-                              ) : (
-                                <div
-                                  ref={setNodeRef}
-                                  style={style}
-                                  className={"task" + (t.done ? " done" : "")}
-                                  onContextMenu={(e) => openMenu(e, g.id, t.id)}
-                                  {...pressHandlers(g.id, t.id)}
-                                >
-                                  <button className="thandle" {...attributes} {...listeners} title="Sürükle" aria-label="Sürükle">⠿</button>
-                                  <button className="tick2" onClick={() => toggle(g.id, t.id)}>{t.done && "✓"}</button>
-                                  <div className="tbody">
-                                    <span className="ttitle">{t.title}</span>
-                                    {t.done ? (
-                                      doneInfo(t) && <span className="tdone">{doneInfo(t)}</span>
-                                    ) : (
-                                      t.createdAt && <span className="tdate">{fmtDate(t.createdAt)}</span>
-                                    )}
-                                    {t.subtasks?.length > 0 && (
-                                      <ul className="subs">
-                                        {t.subtasks.map((s) => (
-                                          <li key={s.id} className={s.done ? "sd" : ""}>
-                                            <button className="sc" onClick={() => toggle(g.id, t.id, s.id)}>{s.done ? "✓" : "–"}</button>
-                                            {s.title}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    )}
-                                    {quickSubFor === t.id && (
-                                      <QuickSub
-                                        onAdd={(title) => addSubtaskQuick(t.id, title)}
-                                        onClose={() => setQuickSubFor(null)}
-                                      />
-                                    )}
-                                  </div>
-                                  <div className="tactions">
-                                    {t.done && <button className="ticon" title="Arşivle" onClick={() => archiveTask(t.id)}>📥</button>}
-                                    <button className="ticon" title="Düzenle" onClick={() => setEditId(t.id)}>✎</button>
-                                    <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
-                                  </div>
+                                <div className="tactions">
+                                  {t.done && <button className="ticon" title="Arşivle" onClick={() => archiveTask(t.id)}>📥</button>}
+                                  <button className="ticon" title="Düzenle" onClick={() => startEdit(t.id, null)}>✎</button>
+                                  <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
                                 </div>
-                              )
-                            }
+                              </div>
+                            )}
                           </SortableTaskRow>
                         ))}
                       </SortableContext>
@@ -785,10 +834,19 @@ export default function App() {
         const top = Math.min(menu.y, (typeof window !== "undefined" ? window.innerHeight : 700) - 180);
         return (
           <div className="ctxmenu" style={{ left, top }} onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => { setQuickSubFor(menu.tid); setMenu(null); }}>Alt görev ekle</button>
-            <button onClick={() => { setEditId(menu.tid); setMenu(null); }}>Düzenle</button>
-            {mt?.done && <button onClick={() => { archiveTask(menu.tid); setMenu(null); }}>Arşivle</button>}
-            <button className="del" onClick={() => { deleteTaskFull(menu.tid); setMenu(null); }}>Sil</button>
+            {menu.sid ? (
+              <>
+                <button onClick={() => startEdit(menu.tid, menu.sid)}>Düzenle</button>
+                <button className="del" onClick={() => { deleteSubtask(menu.tid, menu.sid); setMenu(null); }}>Sil</button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => { setQuickSubFor(menu.tid); setMenu(null); }}>Alt görev ekle</button>
+                <button onClick={() => startEdit(menu.tid, null)}>Düzenle</button>
+                {mt?.done && <button onClick={() => { archiveTask(menu.tid); setMenu(null); }}>Arşivle</button>}
+                <button className="del" onClick={() => { deleteTaskFull(menu.tid); setMenu(null); }}>Sil</button>
+              </>
+            )}
           </div>
         );
       })()}
@@ -971,6 +1029,14 @@ const CSS = `
 .quicksub input{flex:1;padding:7px 10px;border-radius:6px;background:var(--panel);
   border:1px solid rgba(224,163,74,.30);color:var(--txt);font-family:var(--sans);font-size:13.5px;outline:none}
 .quicksub input:focus{border-color:rgba(224,163,74,.55)}
+
+/* yerinde (inline) düzenleme — Google Tasks tarzı */
+.ttitle{cursor:text}
+.sctext{cursor:text}
+.inlinein{background:transparent;border:none;border-bottom:1px solid var(--gold);color:var(--txt);
+  outline:none;width:100%;padding:0 0 2px;font-family:inherit;font-size:inherit;line-height:inherit}
+.inlinein.tt{font-family:var(--serif);font-size:16px;line-height:1.35}
+.inlinein.st{font-family:var(--sans);font-size:13.5px}
 
 .tactions{display:flex;gap:4px;align-items:center;flex:none;opacity:.45;transition:.15s}
 .task:hover .tactions{opacity:1}
