@@ -7,6 +7,14 @@
     "enabled": true
   },
 
+  // Frontend statik dosyaları Worker'dan sunulur (işyeri pages.dev'i engelliyorsa
+  // uygulama https://<worker>.workers.dev/ üzerinden erişilebilir). Bir yol statik dosyayla
+  // eşleşirse doğrudan sunulur; eşleşmezse Worker çalışır (/api/* burada). Deploy öncesi
+  // `npm run build -w frontend` ile dist üretilmelidir (deploy:api bunu otomatik yapar).
+  "assets": {
+    "directory": "../frontend/dist"
+  },
+
   // Görev durumunu tutmak için KV. Aşağıdaki id'ler PLACEHOLDER'dır.
   // Dağıtımdan önce gerçek namespace oluşturup id'leri buraya yazın:
   //   npx wrangler kv namespace create TASKS_KV

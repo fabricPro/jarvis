@@ -71,6 +71,11 @@ npm run deploy:web     # Pages → *.pages.dev  (API tabanı frontend/.env.produ
 > Frontend'in konuştuğu Worker URL'i `frontend/.env.production` içindedir; URL değişirse
 > orayı güncelle. Böylece `deploy:web` için env değişkeni ayarlamak gerekmez (cmd/PowerShell farkı yok).
 
+**İki erişim adresi:** `deploy:api` frontend'i Worker'a da paketler (Workers Static Assets),
+böylece uygulama hem Pages'ten (`*.pages.dev`) hem de Worker'ın kendisinden
+(`https://jarvis-api.<sub>.workers.dev/`) açılır. Ağınız `*.pages.dev`'i engelliyorsa
+workers.dev adresini kullanın (aynı origin, CORS gerekmez).
+
 ### Gemini yapılandırması
 
 `/api/chat` reducer'ı `GEMINI_API_KEY` **tanımlıysa** Gemini Flash'ı kullanır; tanımlı
