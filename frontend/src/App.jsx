@@ -646,7 +646,7 @@ const CSS = `
   --serif:'Iowan Old Style','Palatino Linotype',Georgia,serif;
   --sans:'Inter',system-ui,sans-serif;
   --mono:'JetBrains Mono','SF Mono',ui-monospace,Menlo,monospace;
-  position:relative;height:100dvh;overflow:hidden;color:var(--txt);font-family:var(--sans);
+  position:relative;min-height:100%;color:var(--txt);font-family:var(--sans);
   background:radial-gradient(150% 90% at 50% -25%,rgba(224,163,74,.09),transparent 55%),#151310;
   display:flex;flex-direction:column}
 .jv *{box-sizing:border-box}
@@ -659,8 +659,7 @@ const CSS = `
   box-shadow:0 0 6px var(--gold);animation:breathe 2.4s ease-in-out infinite}
 @keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
 
-.wrap{max-width:680px;width:100%;margin:0 auto;padding:22px 20px 0;flex:1;min-height:0;
-  display:flex;flex-direction:column;overflow:hidden}
+.wrap{max-width:680px;width:100%;margin:0 auto;padding:22px 20px 130px;flex:1}
 
 .head{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px}
 .brand{display:flex;align-items:center;gap:14px}
@@ -691,8 +690,7 @@ const CSS = `
 .tab em{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--gold);margin-left:3px}
 
 .panel{position:relative;background:linear-gradient(180deg,rgba(30,26,21,.5),rgba(30,26,21,.2));
-  border:1px solid var(--line);border-radius:4px;padding:16px 16px 8px;margin-bottom:16px;
-  flex:none;max-height:38vh;overflow-y:auto}
+  border:1px solid var(--line);border-radius:4px;padding:16px 16px 8px;margin-bottom:22px}
 .tick{position:absolute;width:9px;height:9px;pointer-events:none}
 .tick.tl{top:-1px;left:-1px;border-top:1.5px solid var(--gold);border-left:1.5px solid var(--gold)}
 .tick.tr{top:-1px;right:-1px;border-top:1.5px solid var(--gold);border-right:1.5px solid var(--gold)}
@@ -731,7 +729,7 @@ const CSS = `
 .logrow:last-child{border-bottom:none}
 .ltime{flex:none;font-family:var(--mono);color:var(--gold);font-size:11.5px;letter-spacing:.05em;padding-top:2px}
 
-.chat{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow-y:auto;padding-bottom:6px}
+.chat{display:flex;flex-direction:column;gap:10px}
 .hintmsg{color:var(--mut);font-style:italic;font-family:var(--serif);font-size:14px;margin:4px 0}
 .msg{max-width:88%;padding:10px 14px;font-size:14.5px;line-height:1.55;border-radius:12px;white-space:pre-wrap;word-break:break-word}
 .msg.user{align-self:flex-end;background:#282219;border:1px solid var(--line);border-bottom-right-radius:3px;font-family:var(--sans)}
@@ -743,8 +741,8 @@ const CSS = `
 .msg.rep{background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--gold);
   border-radius:6px;max-width:100%;padding:14px 16px;box-shadow:0 0 24px rgba(224,163,74,.06)}
 
-.dock{flex:none;background:#151310;border-top:1px solid var(--line);
-  padding:12px 20px calc(14px + env(safe-area-inset-bottom));display:flex;justify-content:center}
+.dock{position:sticky;bottom:0;background:linear-gradient(transparent,#151310 24%);
+  padding:14px 20px calc(18px + env(safe-area-inset-bottom));display:flex;justify-content:center}
 .dockin{display:flex;align-items:flex-end;max-width:600px;width:100%}
 .in{flex:1;resize:none;min-height:48px;max-height:140px;padding:13px 15px;border-radius:24px;
   background:var(--panel);border:1px solid var(--line);color:var(--txt);font-family:var(--sans);
@@ -758,12 +756,17 @@ const CSS = `
 .send:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
 
 @media (max-width:520px){
-  .wrap{padding:16px 14px 0}
+  /* app-shell: sabit yükseklik, kapaklı panel, büyük chat (yalnız mobil) */
+  .jv{height:100dvh;overflow:hidden}
+  .wrap{padding:16px 14px 0;flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+  .panel{flex:none;max-height:40vh;overflow-y:auto;overflow-x:hidden;margin-bottom:14px}
+  .chat{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
+  .dock{position:static;flex:none;background:#151310;border-top:1px solid var(--line);
+    padding:12px 14px calc(12px + env(safe-area-inset-bottom))}
   .hi{font-size:20px}
   .head{flex-wrap:wrap;gap:10px;padding-bottom:12px}
   .hactions{flex-wrap:wrap;gap:12px}
   .modelsel{max-width:130px}
-  .panel{max-height:34vh}
   .tab{padding:8px 10px;font-size:13px}
   .ticon{padding:5px;font-size:14px}
 }
