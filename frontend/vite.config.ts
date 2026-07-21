@@ -16,7 +16,7 @@ export default defineConfig({
       // yüklemede taze gelir (uygulama sunucu-tabanlı; çevrimdışı fayda sağlamıyordu).
       selfDestroying: true,
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.png', 'jarvis_icon.svg'],
       manifest: {
         name: 'Jarvis — Sohbetle Todo',
         short_name: 'Jarvis',
@@ -27,12 +27,10 @@ export default defineConfig({
         display: 'standalone',
         start_url: '/',
         icons: [
-          {
-            src: 'icon.svg',
-            sizes: '192x192 512x512',
-            type: 'image/svg+xml',
-            purpose: 'any maskable',
-          },
+          { src: 'icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'icon-512-maskable.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: 'favicon.png', sizes: '32x32', type: 'image/png', purpose: 'any' },
         ],
       },
     }),

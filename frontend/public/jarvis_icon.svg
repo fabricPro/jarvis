@@ -1,0 +1,62 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#201c16"/>
+      <stop offset="1" stop-color="#121009"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="46%" r="55%">
+      <stop offset="0" stop-color="#e0a34a" stop-opacity="0.32"/>
+      <stop offset="55%" stop-color="#e0a34a" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#e0a34a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="core" cx="42%" cy="38%" r="70%">
+      <stop offset="0" stop-color="#fff6e0"/>
+      <stop offset="38%" stop-color="#f7cd82"/>
+      <stop offset="78%" stop-color="#e0a34a"/>
+      <stop offset="100%" stop-color="#c07f2e"/>
+    </radialGradient>
+    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="26"/>
+    </filter>
+    <filter id="soft2" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+  </defs>
+
+  <!-- zemin -->
+  <rect width="1024" height="1024" rx="224" fill="url(#ink)"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#glow)"/>
+
+  <g transform="translate(512 512)">
+    <!-- dış çentikli halka (HUD) -->
+    <circle r="300" fill="none" stroke="#e0a34a" stroke-opacity="0.42"
+            stroke-width="12" stroke-dasharray="6 33" stroke-linecap="round"/>
+    <!-- ince kılcal halka -->
+    <circle r="256" fill="none" stroke="#e0a34a" stroke-opacity="0.18" stroke-width="3"/>
+
+    <!-- açık diyafram halkası (alt boşluklu) -->
+    <path d="M -181 106 A 210 210 0 1 1 181 106" fill="none"
+          stroke="#e0a34a" stroke-opacity="0.75" stroke-width="16" stroke-linecap="round"/>
+
+    <!-- yön çentikleri -->
+    <g stroke="#f3c877" stroke-width="14" stroke-linecap="round">
+      <line x1="0" y1="-320" x2="0" y2="-346"/>
+      <line x1="0" y1="320"  x2="0" y2="346"/>
+      <line x1="320" y1="0"  x2="346" y2="0"/>
+      <line x1="-320" y1="0" x2="-346" y2="0"/>
+    </g>
+
+    <!-- parlak tarama yayı -->
+    <path d="M 118 -118 A 167 167 0 0 1 150 74" fill="none"
+          stroke="#f7d38f" stroke-width="18" stroke-linecap="round" opacity="0.95"/>
+
+    <!-- çekirdek halesi -->
+    <circle r="150" fill="#e0a34a" opacity="0.55" filter="url(#soft)"/>
+
+    <!-- çekirdek -->
+    <circle r="116" fill="url(#core)"/>
+    <circle r="116" fill="none" stroke="#fff6e0" stroke-opacity="0.35" stroke-width="2"/>
+    <!-- iç parıltı noktası -->
+    <circle cx="-30" cy="-38" r="30" fill="#fff8ea" opacity="0.7" filter="url(#soft2)"/>
+  </g>
+</svg>
