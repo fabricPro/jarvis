@@ -271,6 +271,34 @@ function SortableTaskRow({ id, disabled, children }) {
 }
 
 // ============================================================
+// Satır-içi hızlı alt görev girişi (bağlam menüsünden "Alt görev ekle").
+function QuickSub({ onAdd, onClose }) {
+  const [v, setV] = useState("");
+  const add = () => {
+    const t = v.trim();
+    if (!t) { onClose(); return; }
+    onAdd(t);
+    setV("");
+  };
+  return (
+    <div className="quicksub">
+      <input
+        placeholder="Alt görev ekle…"
+        value={v}
+        autoFocus
+        onChange={(e) => setV(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); add(); }
+          else if (e.key === "Escape") { e.preventDefault(); onClose(); }
+        }}
+      />
+      <button className="ticon" title="Ekle" onClick={add}>+</button>
+      <button className="ticon del" title="Kapat" onClick={onClose}>×</button>
+    </div>
+  );
+}
+
+// ============================================================
 
 export default function App() {
   const [groups, setGroups] = useState([]);
@@ -293,6 +321,9 @@ export default function App() {
   const [model, setModel] = useState(() => (typeof localStorage !== "undefined" && localStorage.getItem("jarvis.model")) || "");
   const [adding, setAdding] = useState(false);
   const [editId, setEditId] = useState(null);
+  const [menu, setMenu] = useState(null); // { tid, gid, x, y } — sağ tık / uzun bas bağlam menüsü
+  const [quickSubFor, setQuickSubFor] = useState(null); // satır-içi alt görev girişi gösterilecek görev id'si
+  const longPressRef = useRef(null);
 
   // Açılışta oturumu doğrula (şifre yoksa sunucu auth kapalıysa direkt girer).
   useEffect(() => {
@@ -425,6 +456,44 @@ export default function App() {
   const deleteTaskFull = (tid) => setGroups((gs) => rebuild(flatten(gs).filter((t) => t.id !== tid)));
   const archiveTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, archived: true }))));
   const unarchiveTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, archived: false }))));
+  const addSubtaskQuick = (tid, title) =>
+    setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, subtasks: [...(t.subtasks || []), { id: uid(), title, done: false }] }))));
+
+  // --- bağlam menüsü (sağ tık / uzun bas) ---
+  const openMenu = (e, gid, tid) => {
+    e.preventDefault();
+    setMenu({ tid, gid, x: e.clientX, y: e.clientY });
+  };
+  // Dokunmatikte uzun-bas: 450ms hareketsiz basılı tutunca menü açılır (kaydırma iptal eder).
+  const pressHandlers = (gid, tid) => ({
+    onPointerDown: (e) => {
+      if (e.pointerType !== "touch") return;
+      // tutamaç / düğme / input üzerinde başlarsa uzun-bas tetikleme (sürükleme/dokunma çakışmasın)
+      if (e.target.closest && e.target.closest(".thandle, button, input, .quicksub")) return;
+      const x = e.clientX, y = e.clientY;
+      clearTimeout(longPressRef.current);
+      longPressRef.current = setTimeout(() => setMenu({ tid, gid, x, y }), 450);
+    },
+    onPointerMove: () => clearTimeout(longPressRef.current),
+    onPointerUp: () => clearTimeout(longPressRef.current),
+    onPointerCancel: () => clearTimeout(longPressRef.current),
+  });
+  // Menü açıkken: dışına tıklama / Esc / kaydırma menüyü kapatır.
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (e) => { if (e.key === "Escape") setMenu(null); };
+    document.addEventListener("click", close);
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("click", close);
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
+
+  const clearChat = () => setMessages([]);
 
   // --- sürükle-bırak sıralama (yalnız grup içi) ---
   const sensors = useSensors(
@@ -538,6 +607,7 @@ export default function App() {
               </select>
             )}
             <button className="link" onClick={() => report()} disabled={busy}>rapor</button>
+            {messages.length > 0 && <button className="link" onClick={clearChat} disabled={busy}>sohbeti temizle</button>}
             <button className="link" onClick={newDay}>yeni gün</button>
             <button className="link" onClick={lock}>kilitle</button>
           </div>
@@ -587,7 +657,13 @@ export default function App() {
                                   />
                                 </div>
                               ) : (
-                                <div ref={setNodeRef} style={style} className={"task" + (t.done ? " done" : "")}>
+                                <div
+                                  ref={setNodeRef}
+                                  style={style}
+                                  className={"task" + (t.done ? " done" : "")}
+                                  onContextMenu={(e) => openMenu(e, g.id, t.id)}
+                                  {...pressHandlers(g.id, t.id)}
+                                >
                                   <button className="thandle" {...attributes} {...listeners} title="Sürükle" aria-label="Sürükle">⠿</button>
                                   <button className="tick2" onClick={() => toggle(g.id, t.id)}>{t.done && "✓"}</button>
                                   <div className="tbody">
@@ -606,6 +682,12 @@ export default function App() {
                                           </li>
                                         ))}
                                       </ul>
+                                    )}
+                                    {quickSubFor === t.id && (
+                                      <QuickSub
+                                        onAdd={(title) => addSubtaskQuick(t.id, title)}
+                                        onClose={() => setQuickSubFor(null)}
+                                      />
                                     )}
                                   </div>
                                   <div className="tactions">
@@ -695,6 +777,21 @@ export default function App() {
           <button className="send" onClick={send} disabled={busy || !input.trim()}>↑</button>
         </div>
       </div>
+
+      {/* bağlam menüsü (sağ tık / uzun bas) — pencere değil, küçük popover */}
+      {menu && (() => {
+        const mt = groups.flatMap((g) => g.tasks).find((t) => t.id === menu.tid);
+        const left = Math.min(menu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 170);
+        const top = Math.min(menu.y, (typeof window !== "undefined" ? window.innerHeight : 700) - 180);
+        return (
+          <div className="ctxmenu" style={{ left, top }} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => { setQuickSubFor(menu.tid); setMenu(null); }}>Alt görev ekle</button>
+            <button onClick={() => { setEditId(menu.tid); setMenu(null); }}>Düzenle</button>
+            {mt?.done && <button onClick={() => { archiveTask(menu.tid); setMenu(null); }}>Arşivle</button>}
+            <button className="del" onClick={() => { deleteTaskFull(menu.tid); setMenu(null); }}>Sil</button>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -855,6 +952,25 @@ const CSS = `
   -webkit-user-select:none;align-self:flex-start}
 .thandle:hover{color:var(--gold);opacity:1}
 .thandle:active{cursor:grabbing}
+
+/* uzun-basta yerel bağlam menüsü / metin seçimi çıkmasın */
+.task{-webkit-touch-callout:none}
+.task .ttitle{user-select:none;-webkit-user-select:none}
+
+/* bağlam menüsü (popover) */
+.ctxmenu{position:fixed;z-index:50;min-width:150px;background:var(--panel);
+  border:1px solid rgba(224,163,74,.30);border-radius:8px;padding:4px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);display:flex;flex-direction:column}
+.ctxmenu button{background:none;border:none;color:var(--txt);cursor:pointer;text-align:left;
+  font-family:var(--sans);font-size:13.5px;padding:9px 12px;border-radius:5px;line-height:1}
+.ctxmenu button:hover{background:rgba(224,163,74,.12);color:var(--gold)}
+.ctxmenu button.del:hover{background:rgba(217,138,106,.14);color:#d98a6a}
+
+/* satır-içi hızlı alt görev girişi */
+.quicksub{display:flex;gap:6px;align-items:center;margin-top:8px}
+.quicksub input{flex:1;padding:7px 10px;border-radius:6px;background:var(--panel);
+  border:1px solid rgba(224,163,74,.30);color:var(--txt);font-family:var(--sans);font-size:13.5px;outline:none}
+.quicksub input:focus{border-color:rgba(224,163,74,.55)}
 
 .tactions{display:flex;gap:4px;align-items:center;flex:none;opacity:.45;transition:.15s}
 .task:hover .tactions{opacity:1}
