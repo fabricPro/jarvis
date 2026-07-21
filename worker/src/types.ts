@@ -12,6 +12,7 @@ export interface Task {
   title: string
   group?: string // grup adı (opsiyonel)
   done: boolean
+  archived?: boolean // arşive kaldırıldıysa true
   createdAt: string // ISO 8601
   completedAt?: string // ISO 8601
   subtasks: Subtask[]

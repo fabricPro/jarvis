@@ -12,6 +12,7 @@ export interface ModelTask {
   title: string
   group?: string
   done: boolean
+  archived?: boolean
   subtasks?: ModelSubtask[]
 }
 
@@ -104,6 +105,7 @@ export function applyClientState(
       title: ct.title,
       group: ct.group,
       done: ct.done,
+      archived: ct.archived ? true : undefined,
       createdAt: existing?.createdAt ?? now,
       completedAt: ct.done ? (existing?.completedAt ?? now) : undefined,
       subtasks,

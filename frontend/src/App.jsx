@@ -43,6 +43,24 @@ function fmtDate(iso) {
     return "";
   }
 }
+// createdAt → completedAt arası tam gün farkı
+function daysBetween(a, b) {
+  if (!a || !b) return null;
+  try {
+    const d = Math.round((new Date(b).getTime() - new Date(a).getTime()) / 86400000);
+    return d < 0 ? 0 : d;
+  } catch {
+    return null;
+  }
+}
+// Tamamlanmış görev için "21 Tem · 3 günde" (süre isteğe bağlı görünür)
+function doneInfo(t) {
+  const date = fmtDate(t.completedAt);
+  const n = daysBetween(t.createdAt, t.completedAt);
+  const dur = n === null ? "" : n === 0 ? "aynı gün" : n + " günde";
+  if (!date && !dur) return "";
+  return dur ? `✓ ${date} · ${dur}` : `✓ ${date}`;
+}
 function tasksToGroups(tasks) {
   const order = [];
   const byName = new Map();
@@ -56,7 +74,9 @@ function tasksToGroups(tasks) {
       id: t.id,
       title: t.title,
       done: !!t.done,
+      archived: !!t.archived,
       createdAt: t.createdAt,
+      completedAt: t.completedAt,
       subtasks: (t.subtasks || []).map((s) => ({ id: s.id, title: s.title, done: !!s.done })),
     });
   }
@@ -72,6 +92,7 @@ function groupsToTasks(groups) {
       title: t.title,
       group: g.name,
       done: !!t.done,
+      archived: !!t.archived,
       subtasks: (t.subtasks || []).map((s) => ({ id: s.id, title: s.title, done: !!s.done })),
     }))
   );
@@ -344,7 +365,9 @@ export default function App() {
           tasks: g.tasks.map((t) => {
             if (t.id !== tid) return t;
             if (sid) return { ...t, subtasks: t.subtasks.map((s) => (s.id === sid ? { ...s, done: !s.done } : s)) };
-            return { ...t, done: !t.done };
+            const nowDone = !t.done;
+            // completedAt'i iyimser olarak istemcide damgala (sunucu da PUT'ta aynısını yapar)
+            return { ...t, done: nowDone, completedAt: nowDone ? (t.completedAt || new Date().toISOString()) : undefined };
           }),
         }
       )
@@ -356,20 +379,22 @@ export default function App() {
   };
 
   // --- elle düzenleme yardımcıları (istemci state; saveState effect'i PUT eder) ---
-  const flatten = (gs) => gs.flatMap((g) => g.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, createdAt: t.createdAt, subtasks: t.subtasks || [], group: g.name })));
+  const flatten = (gs) => gs.flatMap((g) => g.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, archived: t.archived, createdAt: t.createdAt, completedAt: t.completedAt, subtasks: t.subtasks || [], group: g.name })));
   const rebuild = (flat) => {
     const order = [];
     const byName = new Map();
     for (const t of flat) {
       const name = (t.group && String(t.group).trim()) || "Genel";
       if (!byName.has(name)) { byName.set(name, []); order.push(name); }
-      byName.get(name).push({ id: t.id, title: t.title, done: t.done, createdAt: t.createdAt, subtasks: t.subtasks || [] });
+      byName.get(name).push({ id: t.id, title: t.title, done: t.done, archived: t.archived, createdAt: t.createdAt, completedAt: t.completedAt, subtasks: t.subtasks || [] });
     }
     return order.map((name) => ({ id: "g_" + name, name, tasks: byName.get(name) }));
   };
   const addTaskFull = (d) => setGroups((gs) => rebuild([...flatten(gs), { id: uid(), title: d.title, done: false, createdAt: new Date().toISOString(), subtasks: d.subtasks || [], group: d.group }]));
   const updateTaskFull = (tid, d) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, title: d.title, group: d.group, subtasks: d.subtasks || [] }))));
   const deleteTaskFull = (tid) => setGroups((gs) => rebuild(flatten(gs).filter((t) => t.id !== tid)));
+  const archiveTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, archived: true }))));
+  const unarchiveTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, archived: false }))));
 
   const lock = () => { localStorage.removeItem("jarvis.pass"); setAuthPass(""); setAuthed(false); setLoaded(false); setPassInput(""); };
   const doLogin = async () => {
@@ -382,8 +407,15 @@ export default function App() {
     setAuthBusy(false);
   };
 
-  const openCount = groups.reduce((n, g) => n + g.tasks.filter((t) => !t.done).length, 0);
+  const openCount = groups.reduce((n, g) => n + g.tasks.filter((t) => !t.done && !t.archived).length, 0);
   const groupNames = groups.map((g) => g.name);
+  // Plan sekmesi: arşivsiz görevler (boş grupları at). Arşiv sekmesi: arşivli görevler, yeni→eski.
+  const planGroups = groups
+    .map((g) => ({ ...g, tasks: g.tasks.filter((t) => !t.archived) }))
+    .filter((g) => g.tasks.length > 0);
+  const archivedTasks = groups
+    .flatMap((g) => g.tasks.filter((t) => t.archived).map((t) => ({ ...t, group: g.name })))
+    .sort((a, b) => String(b.completedAt || "").localeCompare(String(a.completedAt || "")));
   const today = new Date().toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long" });
 
   const onKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
@@ -465,6 +497,9 @@ export default function App() {
           <button className={"tab" + (tab === "gunluk" ? " on" : "")} onClick={() => setTab("gunluk")}>
             Günlük {log.length > 0 && <em>{log.length}</em>}
           </button>
+          <button className={"tab" + (tab === "arsiv" ? " on" : "")} onClick={() => setTab("arsiv")}>
+            Arşiv {archivedTasks.length > 0 && <em>{archivedTasks.length}</em>}
+          </button>
         </div>
 
         {/* panel */}
@@ -474,14 +509,14 @@ export default function App() {
             {tab === "plan" ? (
               !loaded ? (
                 <p className="empty">bağlanıyor…</p>
-              ) : groups.length === 0 && !adding ? (
+              ) : planGroups.length === 0 && !adding ? (
                 <>
                   <p className="empty">Sizi dinliyorum, Efendim. Bugün ne var?</p>
                   <button className="addbtn" onClick={() => setAdding(true)}>+ Görev ekle</button>
                 </>
               ) : (
                 <>
-                  {groups.map((g) => (
+                  {planGroups.map((g) => (
                     <div key={g.id} className="group">
                       <p className="gname">{g.name}</p>
                       {g.tasks.map((t) =>
@@ -500,7 +535,11 @@ export default function App() {
                             <button className="tick2" onClick={() => toggle(g.id, t.id)}>{t.done && "✓"}</button>
                             <div className="tbody">
                               <span className="ttitle">{t.title}</span>
-                              {t.createdAt && <span className="tdate">{fmtDate(t.createdAt)}</span>}
+                              {t.done ? (
+                                doneInfo(t) && <span className="tdone">{doneInfo(t)}</span>
+                              ) : (
+                                t.createdAt && <span className="tdate">{fmtDate(t.createdAt)}</span>
+                              )}
                               {t.subtasks?.length > 0 && (
                                 <ul className="subs">
                                   {t.subtasks.map((s) => (
@@ -513,6 +552,7 @@ export default function App() {
                               )}
                             </div>
                             <div className="tactions">
+                              {t.done && <button className="ticon" title="Arşivle" onClick={() => archiveTask(t.id)}>📥</button>}
                               <button className="ticon" title="Düzenle" onClick={() => setEditId(t.id)}>✎</button>
                               <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
                             </div>
@@ -534,14 +574,33 @@ export default function App() {
                   )}
                 </>
               )
-            ) : log.length === 0 ? (
-              <p className="empty">Kayıt yok. "Şunu bitirdim" derseniz buraya işlerim.</p>
+            ) : tab === "gunluk" ? (
+              log.length === 0 ? (
+                <p className="empty">Kayıt yok. "Şunu bitirdim" derseniz buraya işlerim.</p>
+              ) : (
+                <div className="loglist">
+                  {log.map((l) => (
+                    <div key={l.id} className="logrow">
+                      <span className="ltime">{l.time}</span>
+                      <span>{l.text}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : archivedTasks.length === 0 ? (
+              <p className="empty">Arşiv boş. Tamamlanan bir görevi 📥 ile buraya kaldırabilirsiniz.</p>
             ) : (
               <div className="loglist">
-                {log.map((l) => (
-                  <div key={l.id} className="logrow">
-                    <span className="ltime">{l.time}</span>
-                    <span>{l.text}</span>
+                {archivedTasks.map((t) => (
+                  <div key={t.id} className="arow">
+                    <div className="abody">
+                      <span className="atitle">{t.title}</span>
+                      <span className="adate">{[doneInfo(t), t.group].filter(Boolean).join(" · ")}</span>
+                    </div>
+                    <div className="tactions">
+                      <button className="ticon" title="Geri al" onClick={() => unarchiveTask(t.id)}>↩</button>
+                      <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -587,7 +646,7 @@ const CSS = `
   --serif:'Iowan Old Style','Palatino Linotype',Georgia,serif;
   --sans:'Inter',system-ui,sans-serif;
   --mono:'JetBrains Mono','SF Mono',ui-monospace,Menlo,monospace;
-  position:relative;min-height:100%;color:var(--txt);font-family:var(--sans);
+  position:relative;height:100dvh;overflow:hidden;color:var(--txt);font-family:var(--sans);
   background:radial-gradient(150% 90% at 50% -25%,rgba(224,163,74,.09),transparent 55%),#151310;
   display:flex;flex-direction:column}
 .jv *{box-sizing:border-box}
@@ -600,7 +659,8 @@ const CSS = `
   box-shadow:0 0 6px var(--gold);animation:breathe 2.4s ease-in-out infinite}
 @keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
 
-.wrap{max-width:680px;width:100%;margin:0 auto;padding:22px 20px 130px;flex:1}
+.wrap{max-width:680px;width:100%;margin:0 auto;padding:22px 20px 0;flex:1;min-height:0;
+  display:flex;flex-direction:column;overflow:hidden}
 
 .head{display:flex;justify-content:space-between;align-items:center;padding-bottom:16px}
 .brand{display:flex;align-items:center;gap:14px}
@@ -631,7 +691,8 @@ const CSS = `
 .tab em{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--gold);margin-left:3px}
 
 .panel{position:relative;background:linear-gradient(180deg,rgba(30,26,21,.5),rgba(30,26,21,.2));
-  border:1px solid var(--line);border-radius:4px;padding:16px 16px 8px;margin-bottom:22px}
+  border:1px solid var(--line);border-radius:4px;padding:16px 16px 8px;margin-bottom:16px;
+  flex:none;max-height:38vh;overflow-y:auto}
 .tick{position:absolute;width:9px;height:9px;pointer-events:none}
 .tick.tl{top:-1px;left:-1px;border-top:1.5px solid var(--gold);border-left:1.5px solid var(--gold)}
 .tick.tr{top:-1px;right:-1px;border-top:1.5px solid var(--gold);border-right:1.5px solid var(--gold)}
@@ -652,6 +713,14 @@ const CSS = `
 .tbody{flex:1;min-width:0}
 .ttitle{font-family:var(--serif);font-size:16px;line-height:1.35;word-break:break-word}
 .tdate{display:block;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--mut);opacity:.75}
+.tdone{display:block;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:#7ec98a;opacity:.85}
+
+/* arşiv listesi */
+.arow{display:flex;gap:12px;align-items:flex-start;padding:9px 2px;border-bottom:1px solid var(--line)}
+.arow:last-child{border-bottom:none}
+.abody{flex:1;min-width:0}
+.atitle{font-family:var(--serif);font-size:15px;line-height:1.35;color:var(--mut);text-decoration:line-through;word-break:break-word}
+.adate{display:block;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--gold);opacity:.8}
 .subs{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
 .subs li{display:flex;gap:8px;font-size:13.5px;color:var(--txt);align-items:baseline}
 .subs li.sd{color:var(--mut);text-decoration:line-through}
@@ -662,7 +731,7 @@ const CSS = `
 .logrow:last-child{border-bottom:none}
 .ltime{flex:none;font-family:var(--mono);color:var(--gold);font-size:11.5px;letter-spacing:.05em;padding-top:2px}
 
-.chat{display:flex;flex-direction:column;gap:10px}
+.chat{display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow-y:auto;padding-bottom:6px}
 .hintmsg{color:var(--mut);font-style:italic;font-family:var(--serif);font-size:14px;margin:4px 0}
 .msg{max-width:88%;padding:10px 14px;font-size:14.5px;line-height:1.55;border-radius:12px;white-space:pre-wrap;word-break:break-word}
 .msg.user{align-self:flex-end;background:#282219;border:1px solid var(--line);border-bottom-right-radius:3px;font-family:var(--sans)}
@@ -674,8 +743,8 @@ const CSS = `
 .msg.rep{background:var(--panel);border:1px solid var(--line);border-left:2px solid var(--gold);
   border-radius:6px;max-width:100%;padding:14px 16px;box-shadow:0 0 24px rgba(224,163,74,.06)}
 
-.dock{position:sticky;bottom:0;background:linear-gradient(transparent,#151310 24%);padding:14px 20px 18px;
-  display:flex;justify-content:center}
+.dock{flex:none;background:#151310;border-top:1px solid var(--line);
+  padding:12px 20px calc(14px + env(safe-area-inset-bottom));display:flex;justify-content:center}
 .dockin{display:flex;align-items:flex-end;max-width:600px;width:100%}
 .in{flex:1;resize:none;min-height:48px;max-height:140px;padding:13px 15px;border-radius:24px;
   background:var(--panel);border:1px solid var(--line);color:var(--txt);font-family:var(--sans);
@@ -688,7 +757,16 @@ const CSS = `
 .send:hover:not(:disabled){box-shadow:0 0 22px rgba(224,163,74,.6);transform:translateY(-1px)}
 .send:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
 
-@media (max-width:520px){.wrap{padding:20px 16px 130px}.hi{font-size:20px}}
+@media (max-width:520px){
+  .wrap{padding:16px 14px 0}
+  .hi{font-size:20px}
+  .head{flex-wrap:wrap;gap:10px;padding-bottom:12px}
+  .hactions{flex-wrap:wrap;gap:12px}
+  .modelsel{max-width:130px}
+  .panel{max-height:34vh}
+  .tab{padding:8px 10px;font-size:13px}
+  .ticon{padding:5px;font-size:14px}
+}
 @media (prefers-reduced-motion:reduce){.core .dot,.online i,.core.busy .ring{animation:none!important}}
 
 /* ===== EKLENEN ÖĞELER (yeni sınıflar; mevcut kurallar değişmedi) ===== */

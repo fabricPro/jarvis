@@ -110,16 +110,18 @@ const RESPONSE_SCHEMA = {
   required: ['reply', 'tasks'],
 }
 
-/** Gemini'ye gönderilecek kompakt durum görünümü (timestamp'ler hariç). */
+/** Gemini'ye gönderilecek kompakt durum görünümü (arşivliler ve timestamp'ler hariç). */
 function stateForPrompt(state: TaskState) {
   return {
-    tasks: state.tasks.map((t) => ({
-      id: t.id,
-      title: t.title,
-      group: t.group,
-      done: t.done,
-      subtasks: t.subtasks.map((s) => ({ id: s.id, title: s.title, done: s.done })),
-    })),
+    tasks: state.tasks
+      .filter((t) => !t.archived)
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        group: t.group,
+        done: t.done,
+        subtasks: t.subtasks.map((s) => ({ id: s.id, title: s.title, done: s.done })),
+      })),
   }
 }
 
@@ -186,7 +188,16 @@ export async function geminiReduce(
     throw new Error('Gemini yanıtında tasks dizisi yok')
   }
 
-  const state = reconcile(prev, output.tasks, now)
+  // Arşivli görevler Gemini'ye gönderilmedi (stateForPrompt aktifleri kullandı);
+  // reconcile'ı yalnızca aktiflerle çalıştır, sonra arşivlileri geri ekle → kaybolmasınlar.
+  const archived = prev.tasks.filter((t) => t.archived)
+  const activePrev: TaskState = { ...prev, tasks: prev.tasks.filter((t) => !t.archived) }
+  const reconciled = reconcile(activePrev, output.tasks, now)
+  const state: TaskState = {
+    tasks: [...reconciled.tasks, ...archived],
+    log: reconciled.log,
+    updatedAt: now,
+  }
   const reply = typeof output.reply === 'string' ? output.reply : 'Tamam.'
   return { state, reply }
 }
