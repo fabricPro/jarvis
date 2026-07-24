@@ -70,6 +70,18 @@ function fmtDate(iso) {
     return "";
   }
 }
+// Hatırlatma zamanı: "25 Tem 10:00" (yerel)
+function fmtRemind(iso) {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const day = d.toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
+    const time = d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+    return `${day} ${time}`;
+  } catch {
+    return "";
+  }
+}
 // createdAt → completedAt arası tam gün farkı
 function daysBetween(a, b) {
   if (!a || !b) return null;
@@ -104,6 +116,7 @@ function tasksToGroups(tasks) {
       archived: !!t.archived,
       createdAt: t.createdAt,
       completedAt: t.completedAt,
+      remindAt: t.remindAt,
       subtasks: (t.subtasks || []).map((s) => ({ id: s.id, title: s.title, done: !!s.done })),
     });
   }
@@ -372,6 +385,7 @@ export default function App() {
   const [quickSubFor, setQuickSubFor] = useState(null); // satır-içi alt görev girişi gösterilecek görev id'si
   const [openSubs, setOpenSubs] = useState({}); // görev bazında: tamamlanan alt görevleri göster (yalnız arayüz)
   const [pushState, setPushState] = useState("unsupported"); // 'off' | 'on' | 'denied' | 'unsupported'
+  const [flashId, setFlashId] = useState(null); // hatırlatmadan gelince vurgulanan görev
   const longPressRef = useRef(null);
 
   // Açılışta oturumu doğrula (şifre yoksa sunucu auth kapalıysa direkt girer).
@@ -489,14 +503,14 @@ export default function App() {
   };
 
   // --- elle düzenleme yardımcıları (istemci state; saveState effect'i PUT eder) ---
-  const flatten = (gs) => gs.flatMap((g) => g.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, archived: t.archived, createdAt: t.createdAt, completedAt: t.completedAt, subtasks: t.subtasks || [], group: g.name })));
+  const flatten = (gs) => gs.flatMap((g) => g.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, archived: t.archived, createdAt: t.createdAt, completedAt: t.completedAt, remindAt: t.remindAt, subtasks: t.subtasks || [], group: g.name })));
   const rebuild = (flat) => {
     const order = [];
     const byName = new Map();
     for (const t of flat) {
       const name = (t.group && String(t.group).trim()) || "Genel";
       if (!byName.has(name)) { byName.set(name, []); order.push(name); }
-      byName.get(name).push({ id: t.id, title: t.title, done: t.done, archived: t.archived, createdAt: t.createdAt, completedAt: t.completedAt, subtasks: t.subtasks || [] });
+      byName.get(name).push({ id: t.id, title: t.title, done: t.done, archived: t.archived, createdAt: t.createdAt, completedAt: t.completedAt, remindAt: t.remindAt, subtasks: t.subtasks || [] });
     }
     return order.map((name) => ({ id: "g_" + name, name, tasks: byName.get(name) }));
   };
@@ -594,6 +608,40 @@ export default function App() {
       setMessages((m) => [...m, { role: "assistant", text: "Hatırlatmalar açılamadı: " + (e?.message || "bilinmeyen hata") }]);
     }
   };
+
+  // Bir göreve odaklan: Plan sekmesine geç, kaydır, 1.5 sn altın vurgu (otomatik tamamlama YOK).
+  const focusTask = useCallback((id) => {
+    if (!id) return;
+    setTab("plan");
+    setFlashId(id);
+    setTimeout(() => {
+      const el = document.getElementById("task-" + id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 60);
+    setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 1600);
+  }, []);
+
+  // Açılışta ?task=<id> → o göreve odaklan (durum yüklendikten sonra).
+  useEffect(() => {
+    if (!loaded) return;
+    const t = new URLSearchParams(window.location.search).get("task");
+    if (t) focusTask(t);
+    // yalnızca ilk yüklemede
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loaded]);
+
+  // SW'den bildirim tıklama mesajı → URL'i ?task='e güncelle + odaklan.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMsg = (e) => {
+      if (e.data && e.data.type === "jarvis-reminder" && e.data.taskId) {
+        try { window.history.replaceState(null, "", "?task=" + encodeURIComponent(e.data.taskId)); } catch {}
+        focusTask(e.data.taskId);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMsg);
+    return () => navigator.serviceWorker.removeEventListener("message", onMsg);
+  }, [focusTask]);
 
   // --- sürükle-bırak sıralama (yalnız grup içi) ---
   const sensors = useSensors(
@@ -763,9 +811,10 @@ export default function App() {
                               const visibleSubs = open ? subs : subs.filter((s) => !s.done); // varsayılan: tamamlananlar gizli
                               return (
                               <div
+                                id={"task-" + t.id}
                                 ref={setNodeRef}
                                 style={style}
-                                className={"task" + (t.done ? " done" : "")}
+                                className={"task" + (t.done ? " done" : "") + (flashId === t.id ? " flash" : "")}
                                 onContextMenu={(e) => openMenu(e, g.id, t.id)}
                                 {...pressHandlers(g.id, t.id)}
                               >
@@ -794,6 +843,7 @@ export default function App() {
                                   ) : (
                                     t.createdAt && <span className="tdate">{fmtDate(t.createdAt)}</span>
                                   )}
+                                  {t.remindAt && !t.done && <span className="tremind">🔔 {fmtRemind(t.remindAt)}</span>}
                                   {visibleSubs.length > 0 && (
                                     <ul className="subs">
                                       {visibleSubs.map((s) => (
@@ -1010,6 +1060,9 @@ const CSS = `
 .ttitle{font-family:var(--serif);font-size:16px;line-height:1.35;word-break:break-word}
 .tdate{display:block;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--mut);opacity:.75}
 .tdone{display:block;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:#7ec98a;opacity:.85}
+.tremind{display:block;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--gold);opacity:.85}
+.task.flash{animation:flashgold 1.5s ease-out;border-radius:6px}
+@keyframes flashgold{0%{background:rgba(224,163,74,.22)}100%{background:transparent}}
 
 /* arşiv listesi */
 .arow{display:flex;gap:12px;align-items:flex-start;padding:9px 2px;border-bottom:1px solid var(--line)}

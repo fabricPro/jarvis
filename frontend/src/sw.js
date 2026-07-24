@@ -80,3 +80,47 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
+// --- Web Push: bildirimi göster (payload {title, body, taskId}; Notification Actions YOK) ---
+self.addEventListener("push", (event) => {
+  let d = {};
+  try {
+    d = event.data ? event.data.json() : {};
+  } catch {
+    d = {};
+  }
+  const title = d.title || "JARVIS";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: d.body || "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: d.taskId || undefined,
+      data: { taskId: d.taskId || null },
+    })
+  );
+});
+
+// --- Bildirime tıklama: açık sekme varsa ODAKLAN (yeni sekme AÇMA), yoksa aç ---
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const taskId = event.notification.data && event.notification.data.taskId;
+  const openUrl = taskId ? "/?task=" + encodeURIComponent(taskId) : "/";
+  event.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const w of wins) {
+        try {
+          if (new URL(w.url).origin === self.location.origin) {
+            await w.focus();
+            w.postMessage({ type: "jarvis-reminder", taskId: taskId || null });
+            return;
+          }
+        } catch {
+          /* yoksay */
+        }
+      }
+      await self.clients.openWindow(openUrl);
+    })()
+  );
+});
