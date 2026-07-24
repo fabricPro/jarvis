@@ -349,6 +349,7 @@ export default function App() {
   const [editing, setEditing] = useState(null); // { tid, sid } — sid null → görev başlığı; dolu → alt görev
   const [menu, setMenu] = useState(null); // { tid, gid, sid, x, y } — sağ tık / uzun bas bağlam menüsü
   const [quickSubFor, setQuickSubFor] = useState(null); // satır-içi alt görev girişi gösterilecek görev id'si
+  const [openSubs, setOpenSubs] = useState({}); // görev bazında: tamamlanan alt görevleri göster (yalnız arayüz)
   const longPressRef = useRef(null);
 
   // Açılışta oturumu doğrula (şifre yoksa sunucu auth kapalıysa direkt girer).
@@ -688,7 +689,14 @@ export default function App() {
                       <SortableContext items={g.tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
                         {g.tasks.map((t) => (
                           <SortableTaskRow key={t.id} id={t.id} disabled={editing?.tid === t.id}>
-                            {({ setNodeRef, style, attributes, listeners }) => (
+                            {({ setNodeRef, style, attributes, listeners }) => {
+                              const subs = t.subtasks || [];
+                              const total = subs.length;
+                              const doneN = subs.filter((s) => s.done).length;
+                              const allDone = total > 0 && doneN === total;
+                              const open = !!openSubs[t.id];
+                              const visibleSubs = open ? subs : subs.filter((s) => !s.done); // varsayılan: tamamlananlar gizli
+                              return (
                               <div
                                 ref={setNodeRef}
                                 style={style}
@@ -709,14 +717,21 @@ export default function App() {
                                   ) : (
                                     <span className="ttitle" onClick={() => startEdit(t.id, null)}>{t.title}</span>
                                   )}
+                                  {total > 0 && !(editing?.tid === t.id && editing?.sid == null) && (
+                                    <button
+                                      className={"subbadge" + (allDone ? " full" : "")}
+                                      title="Alt görevleri göster/gizle"
+                                      onClick={() => setOpenSubs((o) => ({ ...o, [t.id]: !o[t.id] }))}
+                                    >{doneN}/{total}</button>
+                                  )}
                                   {t.done ? (
                                     doneInfo(t) && <span className="tdone">{doneInfo(t)}</span>
                                   ) : (
                                     t.createdAt && <span className="tdate">{fmtDate(t.createdAt)}</span>
                                   )}
-                                  {t.subtasks?.length > 0 && (
+                                  {visibleSubs.length > 0 && (
                                     <ul className="subs">
-                                      {t.subtasks.map((s) => (
+                                      {visibleSubs.map((s) => (
                                         <li key={s.id} data-sid={s.id} className={s.done ? "sd" : ""}>
                                           <button className="sc" onClick={() => toggle(g.id, t.id, s.id)}>{s.done ? "✓" : "–"}</button>
                                           {editing?.tid === t.id && editing?.sid === s.id ? (
@@ -746,7 +761,8 @@ export default function App() {
                                   <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
                                 </div>
                               </div>
-                            )}
+                              );
+                            }}
                           </SortableTaskRow>
                         ))}
                       </SortableContext>
@@ -936,6 +952,11 @@ const CSS = `
 .abody{flex:1;min-width:0}
 .atitle{font-family:var(--serif);font-size:15px;line-height:1.35;color:var(--mut);text-decoration:line-through;word-break:break-word}
 .adate{display:block;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--gold);opacity:.8}
+.subbadge{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--gold);
+  background:none;border:1px solid rgba(224,163,74,.35);border-radius:999px;padding:1px 6px;
+  margin-left:8px;cursor:pointer;opacity:.85;vertical-align:middle;line-height:1.5}
+.subbadge:hover{opacity:1;border-color:var(--gold)}
+.subbadge.full{background:var(--gold);color:#151310;border-color:var(--gold);opacity:1}
 .subs{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
 .subs li{display:flex;gap:8px;font-size:13.5px;color:var(--txt);align-items:baseline}
 .subs li.sd{color:var(--mut);text-decoration:line-through}
