@@ -23,6 +23,17 @@ import { CSS as DndCSS } from "@dnd-kit/utilities";
 // ============================================================
 
 const API = import.meta.env.VITE_API_BASE || ""; // örn: https://jarvis-api.<sub>.workers.dev
+const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY || ""; // Web Push public anahtarı (gizli değil)
+
+// base64url → Uint8Array (pushManager.subscribe applicationServerKey için)
+function urlB64ToUint8(base64) {
+  const pad = "=".repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(b64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
 const uid = () =>
   crypto?.randomUUID?.()?.slice(0, 8) || Math.random().toString(36).slice(2, 10);
 const now = () =>
@@ -180,6 +191,16 @@ async function fetchModels() {
   const r = await fetch(`${API}/api/models`, { headers: authHeaders() });
   if (!r.ok) throw new Error("api " + r.status);
   return await r.json();
+}
+
+// Cihaz push aboneliğini Worker'a gönder (KV'ye kaydedilir).
+async function sendSubscription(sub) {
+  const r = await fetch(`${API}/api/push/subscribe`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(sub),
+  });
+  if (!r.ok) throw new Error("abonelik kaydedilemedi (" + r.status + ")");
 }
 
 // Şifre doğrulama: verilen şifreyle GET /api/state (200=doğru, 401=yanlış).
@@ -350,6 +371,7 @@ export default function App() {
   const [menu, setMenu] = useState(null); // { tid, gid, sid, x, y } — sağ tık / uzun bas bağlam menüsü
   const [quickSubFor, setQuickSubFor] = useState(null); // satır-içi alt görev girişi gösterilecek görev id'si
   const [openSubs, setOpenSubs] = useState({}); // görev bazında: tamamlanan alt görevleri göster (yalnız arayüz)
+  const [pushState, setPushState] = useState("unsupported"); // 'off' | 'on' | 'denied' | 'unsupported'
   const longPressRef = useRef(null);
 
   // Açılışta oturumu doğrula (şifre yoksa sunucu auth kapalıysa direkt girer).
@@ -540,6 +562,39 @@ export default function App() {
 
   const clearChat = () => setMessages([]);
 
+  // --- Web Push: mevcut izin/abonelik durumunu tespit et (sayfa açılışında OTOMATİK izin isteme) ---
+  useEffect(() => {
+    if (!VAPID_PUBLIC || typeof Notification === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") { setPushState("denied"); return; }
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => setPushState(sub ? "on" : "off"))
+      .catch(() => setPushState("off"));
+  }, []);
+
+  // "Hatırlatmaları aç": izin iste → abone ol → subscription'ı Worker'a gönder.
+  const enablePush = async () => {
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") { setPushState("denied"); return; }
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlB64ToUint8(VAPID_PUBLIC),
+        });
+      }
+      await sendSubscription(sub.toJSON());
+      setPushState("on");
+    } catch (e) {
+      setMessages((m) => [...m, { role: "assistant", text: "Hatırlatmalar açılamadı: " + (e?.message || "bilinmeyen hata") }]);
+    }
+  };
+
   // --- sürükle-bırak sıralama (yalnız grup içi) ---
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -650,6 +705,16 @@ export default function App() {
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
+            )}
+            {pushState !== "unsupported" && (
+              <button
+                className={"link" + (pushState === "on" ? " on" : "")}
+                onClick={enablePush}
+                disabled={pushState === "on"}
+                title={pushState === "denied" ? "Bildirim izni reddedildi — tarayıcı ayarlarından açın" : "Hatırlatma bildirimleri"}
+              >
+                {pushState === "on" ? "hatırlatmalar açık" : "hatırlatmaları aç"}
+              </button>
             )}
             <button className="link" onClick={() => report()} disabled={busy}>rapor</button>
             {messages.length > 0 && <button className="link" onClick={clearChat} disabled={busy}>sohbeti temizle</button>}

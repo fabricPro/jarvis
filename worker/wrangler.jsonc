@@ -31,10 +31,16 @@
   // Gizli OLMAYAN yapılandırma. Frontend'i (Pages) deploy ettikten sonra CORS_ORIGIN'i
   // Pages URL'ine daraltın ve Worker'ı yeniden deploy edin. Ayarlanmazsa CORS "*" olur.
   "vars": {
-    "CORS_ORIGIN": "https://jarvis-1bb.pages.dev"
+    "CORS_ORIGIN": "https://jarvis-1bb.pages.dev",
+    // Web Push VAPID iletişim adresi (mailto/https). Push servisleri gerekirse buraya ulaşır.
+    // Kendi e-postanızla değiştirebilirsiniz (gizli değil).
+    "VAPID_SUBJECT": "mailto:jarvis@example.com"
     // "GEMINI_MODEL": "gemini-3.5-flash",   // kod varsayılanı; başka modele geçmek için aç
     // "REPORT_TZ": "Europe/Istanbul"
   }
+
+  // VAPID_PRIVATE_KEY bir SECRET'tır (JWK) — burada TANIMLANMAZ:
+  //   npx wrangler secret put VAPID_PRIVATE_KEY
 
   // GEMINI_API_KEY bir SECRET'tır — burada TANIMLANMAZ:
   //   npx wrangler secret put GEMINI_API_KEY

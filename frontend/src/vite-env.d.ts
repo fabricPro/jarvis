@@ -4,6 +4,8 @@
 interface ImportMetaEnv {
   /** Prod'da Worker API'sinin mutlak tabanı (örn. https://jarvis-api.xxx.workers.dev). Dev'de boş. */
   readonly VITE_API_BASE?: string
+  /** Web Push VAPID public anahtarı (base64url, gizli değil). */
+  readonly VITE_VAPID_PUBLIC_KEY?: string
 }
 
 interface ImportMeta {

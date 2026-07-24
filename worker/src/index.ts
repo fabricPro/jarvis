@@ -8,6 +8,7 @@
  */
 
 import { geminiReduce, resolveModels } from './gemini'
+import { isValidSub, saveSubscription } from './push'
 import { applyClientState, type ModelTask } from './reconcile'
 import { reduce } from './reducer'
 import { buildReport, isReportCommand } from './report'
@@ -29,6 +30,9 @@ export interface Env {
   // Uygulama şifresi (secret). Ayarlıysa /api/* istekleri (health hariç) doğru
   // x-app-password header'ı taşımalı; aksi halde 401. Ayarlı değilse auth kapalı (dev).
   APP_PASSWORD?: string
+  // Web Push VAPID: özel anahtar (JWK) secret; subject (mailto) opsiyonel var.
+  VAPID_PRIVATE_KEY?: string
+  VAPID_SUBJECT?: string
 }
 
 function corsHeaders(env: Env, request: Request): Record<string, string> {
@@ -153,6 +157,23 @@ async function handleState(request: Request, env: Env): Promise<Response> {
   return json({ error: 'method_not_allowed' }, { status: 405 })
 }
 
+async function handlePushSubscribe(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'POST') {
+    return json({ error: 'method_not_allowed' }, { status: 405 })
+  }
+  let body: unknown
+  try {
+    body = await request.json()
+  } catch {
+    return json({ error: 'invalid_json' }, { status: 400 })
+  }
+  if (!isValidSub(body)) {
+    return json({ error: 'invalid_subscription' }, { status: 400 })
+  }
+  await saveSubscription(env.TASKS_KV, body)
+  return json({ ok: true })
+}
+
 async function route(request: Request, env: Env, url: URL): Promise<Response> {
   // GET /api/health → sağlık kontrolü
   if (url.pathname === '/api/health' && request.method === 'GET') {
@@ -172,6 +193,11 @@ async function route(request: Request, env: Env, url: URL): Promise<Response> {
   // /api/chat → mesajı işle, durumu güncelle
   if (url.pathname === '/api/chat') {
     return handleChat(request, env)
+  }
+
+  // POST /api/push/subscribe → cihaz aboneliğini KV'ye kaydet
+  if (url.pathname === '/api/push/subscribe') {
+    return handlePushSubscribe(request, env)
   }
 
   return json({ error: 'not_found' }, { status: 404 })
