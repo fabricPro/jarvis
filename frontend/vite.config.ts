@@ -11,10 +11,17 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // Bayat önbellek sorununu kökten bitirmek için service worker'ı kendini imha eden
-      // moda alıyoruz: mevcut SW kaydını siler + önbelleklerini temizler, uygulama her
-      // yüklemede taze gelir (uygulama sunucu-tabanlı; çevrimdışı fayda sağlamıyordu).
-      selfDestroying: true,
+      // Web Push için AKTİF, elle yazılmış service worker (frontend/src/sw.js).
+      // Bayatlamayı önlemek için: install→skipWaiting, activate→clients.claim + sürümlü
+      // cache temizliği, /api ve navigasyonda network-first, statiklerde cache-first (bkz. sw.js).
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
+      injectRegister: 'auto',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,png,svg,webmanifest}'],
+      },
+      devOptions: { enabled: true, type: 'module' },
       registerType: 'autoUpdate',
       includeAssets: ['favicon.png', 'jarvis_icon.svg'],
       manifest: {
