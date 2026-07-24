@@ -8,7 +8,7 @@
  */
 
 import { geminiReduce, resolveModels } from './gemini'
-import { isValidSub, saveSubscription } from './push'
+import { deleteSubscription, isValidSub, listSubscriptions, saveSubscription, sendPush } from './push'
 import { applyClientState, type ModelTask } from './reconcile'
 import { reduce } from './reducer'
 import { buildReport, isReportCommand } from './report'
@@ -228,5 +228,47 @@ export default {
     }
 
     return route(request, env, url)
+  },
+
+  // Cron (her 5 dk): zamanı gelmiş, henüz gönderilmemiş hatırlatmalar için push gönderir.
+  async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const now = new Date().toISOString()
+    const state = await getState(env.TASKS_KV, now)
+
+    // Zamanı geçmiş/gelmiş, bir kez gönderilmemiş, açık ve arşivsiz görevler.
+    const due = state.tasks.filter(
+      (t) => t.remindAt && !t.reminderSent && !t.done && !t.archived && t.remindAt <= now,
+    )
+    if (due.length === 0) return
+
+    const subs = await listSubscriptions(env.TASKS_KV)
+    if (subs.length === 0) return // hiç cihaz aboneliği yok → one-shot'ı yakma, sonra teslim edilir
+
+    const dead = new Set<string>()
+    let changed = false
+    for (const task of due) {
+      for (const { key, sub } of subs) {
+        if (dead.has(key)) continue
+        let status = 0
+        try {
+          status = await sendPush(
+            env,
+            sub,
+            { title: 'JARVIS — Hatırlatma', body: task.title, taskId: task.id },
+          )
+        } catch {
+          status = 0
+        }
+        // Ölü abonelik → KV'den sil (bir daha deneme).
+        if (status === 404 || status === 410) {
+          await deleteSubscription(env.TASKS_KV, key)
+          dead.add(key)
+        }
+      }
+      task.reminderSent = true // her hatırlatma yalnızca BİR KEZ çalar
+      changed = true
+    }
+
+    if (changed) await putState(env.TASKS_KV, state)
   },
 } satisfies ExportedHandler<Env>

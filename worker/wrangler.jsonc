@@ -15,6 +15,11 @@
     "directory": "../frontend/dist"
   },
 
+  // Hatırlatma göndericisi: her 5 dakikada bir çalışan Cron Trigger (scheduled handler).
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+
   // Görev durumunu tutmak için KV. Aşağıdaki id'ler PLACEHOLDER'dır.
   // Dağıtımdan önce gerçek namespace oluşturup id'leri buraya yazın:
   //   npx wrangler kv namespace create TASKS_KV
