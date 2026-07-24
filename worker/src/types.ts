@@ -15,6 +15,8 @@ export interface Task {
   archived?: boolean // arşive kaldırıldıysa true
   createdAt: string // ISO 8601
   completedAt?: string // ISO 8601
+  remindAt?: string // ISO 8601, UTC — hatırlatma zamanı (son tarih DEĞİL)
+  reminderSent?: boolean // bu hatırlatma için bildirim gönderildi mi
   subtasks: Subtask[]
 }
 

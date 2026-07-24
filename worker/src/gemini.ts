@@ -15,6 +15,7 @@ interface GeminiEnv {
   GEMINI_API_KEY?: string
   GEMINI_MODEL?: string
   GEMINI_BASE_URL?: string
+  REPORT_TZ?: string // hatırlatma için yerel saat dilimi (varsayılan Europe/Istanbul)
 }
 
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com'
@@ -61,6 +62,16 @@ Kurallar:
 - Örnek: "X'e perdelik numune hazırla" -> çözgü/atkı ve deseni netleştir · tezgah ayarı ·
   dokut · gramaj/kalite kontrol · paketle ve sevk et.
 
+## Hatırlatma ("remindAt")
+- Kullanıcı bir hatırlatma zamanı belirtirse ("yarın 10'da hatırlat", "salı 14:00", "2 saat sonra"),
+  ilgili görevin "remindAt" alanını GERÇEK tarihe çevir: ISO 8601, UTC, "Z" ekli
+  (ör. 2026-07-24T11:00:00Z). Göreli/gün adlı ifadeleri sana verilen "Şu an" bilgisine göre hesapla.
+  Saat verilmezse makul bir yerel saat seç (ör. sabah=09:00).
+- Hatırlatma istenmiyorsa "remindAt" alanını HİÇ EKLEME (boş bırak).
+- Kullanıcı hatırlatmayı iptal isterse ("o hatırlatmayı kaldır"), "remindAt"i boş string "" yap.
+- Saati değiştirmek isterse "remindAt"i güncelle.
+- Bu bir HATIRLATICI; son tarih değil. Gecikme/uyarı üretme.
+
 ## Yanıt (reply)
 - JARVIS tonunda: sakin, kesin, 1-2 cümle. Gerektiğinde "Efendim" — ölçülü. Listeyi tekrar sayma.`
 
@@ -90,6 +101,7 @@ const RESPONSE_SCHEMA = {
           title: { type: 'STRING' },
           group: { type: 'STRING' },
           done: { type: 'BOOLEAN' },
+          remindAt: { type: 'STRING' },
           subtasks: {
             type: 'ARRAY',
             items: {
@@ -139,7 +151,22 @@ export async function geminiReduce(
   const baseUrl = (env.GEMINI_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '')
   const url = `${baseUrl}/v1beta/models/${model}:generateContent`
 
+  // Göreli zaman ("yarın 10'da", "salı 14:00") hesaplanabilsin diye şimdiki zamanı + saat dilimini
+  // (haftanın günü dahil) ve UTC ISO karşılığını her çağrıda bağlama ekle.
+  const tz = env.REPORT_TZ || 'Europe/Istanbul'
+  const nowHuman = new Intl.DateTimeFormat('tr-TR', {
+    timeZone: tz,
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(now))
+
   const parts: string[] = ['Mevcut durum:', JSON.stringify(stateForPrompt(prev))]
+  parts.push('', `Şu an: ${nowHuman} (${tz}). Şimdinin UTC ISO karşılığı: ${now}.`)
   if (history.length > 0) {
     parts.push('', 'Son konuşma:', ...history.slice(-6))
   }

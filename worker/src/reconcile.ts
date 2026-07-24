@@ -13,6 +13,7 @@ export interface ModelTask {
   group?: string
   done: boolean
   archived?: boolean
+  remindAt?: string // hatırlatma: dolu=ayarla, ""=iptal, atlanmış=değiştirme
   subtasks?: ModelSubtask[]
 }
 
@@ -52,6 +53,21 @@ export function reconcile(prev: TaskState, modelTasks: ModelTask[], now: string)
       logAdditions.push({ at: now, text: `Tamamlandı: ${mt.title}` })
     }
 
+    // Hatırlatma: model remindAt'i göndermezse (undefined) mevcut korunur; "" gelirse iptal;
+    // farklı bir değer gelirse ayarlanır ve reminderSent sıfırlanır (yeniden bildirim için).
+    let remindAt = existing?.remindAt
+    let reminderSent = existing?.reminderSent
+    if (mt.remindAt !== undefined) {
+      const v = mt.remindAt.trim()
+      if (!v) {
+        remindAt = undefined
+        reminderSent = undefined
+      } else if (v !== existing?.remindAt) {
+        remindAt = v
+        reminderSent = false
+      }
+    }
+
     return {
       id: existing?.id ?? crypto.randomUUID(),
       title: mt.title,
@@ -59,6 +75,8 @@ export function reconcile(prev: TaskState, modelTasks: ModelTask[], now: string)
       done: mt.done,
       createdAt: existing?.createdAt ?? now,
       completedAt: mt.done ? (existing?.completedAt ?? now) : undefined,
+      remindAt,
+      reminderSent,
       subtasks,
     }
   })
@@ -108,6 +126,9 @@ export function applyClientState(
       archived: ct.archived ? true : undefined,
       createdAt: existing?.createdAt ?? now,
       completedAt: ct.done ? (existing?.completedAt ?? now) : undefined,
+      // Hatırlatma alanları istemciden gelmiyor; mevcut durumdan (id ile) korunur.
+      remindAt: existing?.remindAt,
+      reminderSent: existing?.reminderSent,
       subtasks,
     }
   })
