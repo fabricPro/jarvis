@@ -239,14 +239,18 @@ export default {
     const due = state.tasks.filter(
       (t) => t.remindAt && !t.reminderSent && !t.done && !t.archived && t.remindAt <= now,
     )
+    const hasKey = !!env.VAPID_PRIVATE_KEY
+    console.log(`[cron] ${now} due=${due.length} vapidKey=${hasKey}`)
     if (due.length === 0) return
 
     const subs = await listSubscriptions(env.TASKS_KV)
+    console.log(`[cron] subs=${subs.length}`)
     if (subs.length === 0) return // hiç cihaz aboneliği yok → one-shot'ı yakma, sonra teslim edilir
 
     const dead = new Set<string>()
     let changed = false
     for (const task of due) {
+      let delivered = false
       for (const { key, sub } of subs) {
         if (dead.has(key)) continue
         let status = 0
@@ -256,17 +260,24 @@ export default {
             sub,
             { title: 'JARVIS — Hatırlatma', body: task.title, taskId: task.id },
           )
-        } catch {
+        } catch (err) {
+          console.log(`[cron] push ${task.id} EXCEPTION ${err instanceof Error ? err.message : err}`)
           status = 0
         }
+        console.log(`[cron] push task=${task.id} status=${status}`)
+        if (status >= 200 && status < 300) delivered = true
         // Ölü abonelik → KV'den sil (bir daha deneme).
         if (status === 404 || status === 410) {
           await deleteSubscription(env.TASKS_KV, key)
           dead.add(key)
         }
       }
-      task.reminderSent = true // her hatırlatma yalnızca BİR KEZ çalar
-      changed = true
+      // Yalnızca en az bir push KABUL edildiyse (2xx) "gönderildi" işaretle → başarısızlıkta
+      // one-shot yanmaz, sebep düzeltilince sonraki cron'da teslim edilir.
+      if (delivered) {
+        task.reminderSent = true
+        changed = true
+      }
     }
 
     if (changed) await putState(env.TASKS_KV, state)
