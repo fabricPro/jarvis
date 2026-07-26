@@ -13,6 +13,7 @@ export interface ModelTask {
   group?: string
   done: boolean
   archived?: boolean
+  onHold?: boolean
   remindAt?: string // hatırlatma: dolu=ayarla, ""=iptal, atlanmış=değiştirme
   subtasks?: ModelSubtask[]
 }
@@ -124,6 +125,7 @@ export function applyClientState(
       group: ct.group,
       done: ct.done,
       archived: ct.archived ? true : undefined,
+      onHold: ct.onHold ? true : undefined,
       createdAt: existing?.createdAt ?? now,
       completedAt: ct.done ? (existing?.completedAt ?? now) : undefined,
       // Hatırlatma alanları istemciden gelmiyor; mevcut durumdan (id ile) korunur.

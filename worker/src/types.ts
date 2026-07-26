@@ -12,7 +12,8 @@ export interface Task {
   title: string
   group?: string // grup adı (opsiyonel)
   done: boolean
-  archived?: boolean // arşive kaldırıldıysa true
+  archived?: boolean // arşive kaldırıldıysa true (tamamlanmış kayıt)
+  onHold?: boolean // askıya alındıysa true (tamamlanmamış, duraklatılmış)
   createdAt: string // ISO 8601
   completedAt?: string // ISO 8601
   remindAt?: string // ISO 8601, UTC — hatırlatma zamanı (son tarih DEĞİL)

@@ -114,6 +114,7 @@ function tasksToGroups(tasks) {
       title: t.title,
       done: !!t.done,
       archived: !!t.archived,
+      onHold: !!t.onHold,
       createdAt: t.createdAt,
       completedAt: t.completedAt,
       remindAt: t.remindAt,
@@ -133,6 +134,7 @@ function groupsToTasks(groups) {
       group: g.name,
       done: !!t.done,
       archived: !!t.archived,
+      onHold: !!t.onHold,
       subtasks: (t.subtasks || []).map((s) => ({ id: s.id, title: s.title, done: !!s.done })),
     }))
   );
@@ -503,14 +505,14 @@ export default function App() {
   };
 
   // --- elle düzenleme yardımcıları (istemci state; saveState effect'i PUT eder) ---
-  const flatten = (gs) => gs.flatMap((g) => g.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, archived: t.archived, createdAt: t.createdAt, completedAt: t.completedAt, remindAt: t.remindAt, subtasks: t.subtasks || [], group: g.name })));
+  const flatten = (gs) => gs.flatMap((g) => g.tasks.map((t) => ({ id: t.id, title: t.title, done: t.done, archived: t.archived, onHold: t.onHold, createdAt: t.createdAt, completedAt: t.completedAt, remindAt: t.remindAt, subtasks: t.subtasks || [], group: g.name })));
   const rebuild = (flat) => {
     const order = [];
     const byName = new Map();
     for (const t of flat) {
       const name = (t.group && String(t.group).trim()) || "Genel";
       if (!byName.has(name)) { byName.set(name, []); order.push(name); }
-      byName.get(name).push({ id: t.id, title: t.title, done: t.done, archived: t.archived, createdAt: t.createdAt, completedAt: t.completedAt, remindAt: t.remindAt, subtasks: t.subtasks || [] });
+      byName.get(name).push({ id: t.id, title: t.title, done: t.done, archived: t.archived, onHold: t.onHold, createdAt: t.createdAt, completedAt: t.completedAt, remindAt: t.remindAt, subtasks: t.subtasks || [] });
     }
     return order.map((name) => ({ id: "g_" + name, name, tasks: byName.get(name) }));
   };
@@ -518,6 +520,8 @@ export default function App() {
   const deleteTaskFull = (tid) => setGroups((gs) => rebuild(flatten(gs).filter((t) => t.id !== tid)));
   const archiveTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, archived: true }))));
   const unarchiveTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, archived: false }))));
+  const holdTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, onHold: true }))));
+  const unholdTask = (tid) => setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, onHold: false }))));
   const addSubtaskQuick = (tid, title) =>
     setGroups((gs) => rebuild(flatten(gs).map((t) => (t.id !== tid ? t : { ...t, subtasks: [...(t.subtasks || []), { id: uid(), title, done: false }] }))));
   const updateTaskTitle = (tid, title) =>
@@ -673,15 +677,18 @@ export default function App() {
     setAuthBusy(false);
   };
 
-  const openCount = groups.reduce((n, g) => n + g.tasks.filter((t) => !t.done && !t.archived).length, 0);
+  const openCount = groups.reduce((n, g) => n + g.tasks.filter((t) => !t.done && !t.archived && !t.onHold).length, 0);
   const groupNames = groups.map((g) => g.name);
-  // Plan sekmesi: arşivsiz görevler (boş grupları at). Arşiv sekmesi: arşivli görevler, yeni→eski.
+  // Plan: arşivsiz + askıda-olmayan görevler (boş grupları at). Arşiv: arşivliler. Askıda: onHold.
   const planGroups = groups
-    .map((g) => ({ ...g, tasks: g.tasks.filter((t) => !t.archived) }))
+    .map((g) => ({ ...g, tasks: g.tasks.filter((t) => !t.archived && !t.onHold) }))
     .filter((g) => g.tasks.length > 0);
   const archivedTasks = groups
     .flatMap((g) => g.tasks.filter((t) => t.archived).map((t) => ({ ...t, group: g.name })))
     .sort((a, b) => String(b.completedAt || "").localeCompare(String(a.completedAt || "")));
+  const heldTasks = groups
+    .flatMap((g) => g.tasks.filter((t) => t.onHold && !t.archived).map((t) => ({ ...t, group: g.name })))
+    .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   const today = new Date().toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long" });
 
   const onKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
@@ -777,6 +784,9 @@ export default function App() {
           <button className={"tab" + (tab === "gunluk" ? " on" : "")} onClick={() => setTab("gunluk")}>
             Günlük {log.length > 0 && <em>{log.length}</em>}
           </button>
+          <button className={"tab" + (tab === "askida" ? " on" : "")} onClick={() => setTab("askida")}>
+            Askıda {heldTasks.length > 0 && <em>{heldTasks.length}</em>}
+          </button>
           <button className={"tab" + (tab === "arsiv" ? " on" : "")} onClick={() => setTab("arsiv")}>
             Arşiv {archivedTasks.length > 0 && <em>{archivedTasks.length}</em>}
           </button>
@@ -871,7 +881,9 @@ export default function App() {
                                   )}
                                 </div>
                                 <div className="tactions">
-                                  {t.done && <button className="ticon" title="Arşivle" onClick={() => archiveTask(t.id)}>📥</button>}
+                                  {t.done
+                                    ? <button className="ticon" title="Arşivle" onClick={() => archiveTask(t.id)}>📥</button>
+                                    : <button className="ticon" title="Askıya al" onClick={() => holdTask(t.id)}>⏸</button>}
                                   <button className="ticon" title="Düzenle" onClick={() => startEdit(t.id, null)}>✎</button>
                                   <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
                                 </div>
@@ -909,18 +921,37 @@ export default function App() {
                   ))}
                 </div>
               )
-            ) : archivedTasks.length === 0 ? (
-              <p className="empty">Arşiv boş. Tamamlanan bir görevi 📥 ile buraya kaldırabilirsiniz.</p>
+            ) : tab === "arsiv" ? (
+              archivedTasks.length === 0 ? (
+                <p className="empty">Arşiv boş. Tamamlanan bir görevi 📥 ile buraya kaldırabilirsiniz.</p>
+              ) : (
+                <div className="loglist">
+                  {archivedTasks.map((t) => (
+                    <div key={t.id} className="arow">
+                      <div className="abody">
+                        <span className="atitle">{t.title}</span>
+                        <span className="adate">{[doneInfo(t), t.group].filter(Boolean).join(" · ")}</span>
+                      </div>
+                      <div className="tactions">
+                        <button className="ticon" title="Geri al" onClick={() => unarchiveTask(t.id)}>↩</button>
+                        <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : heldTasks.length === 0 ? (
+              <p className="empty">Askıda görev yok. Bir görevi ⏸ ile buraya alıp sonra geri getirebilirsiniz.</p>
             ) : (
               <div className="loglist">
-                {archivedTasks.map((t) => (
-                  <div key={t.id} className="arow">
+                {heldTasks.map((t) => (
+                  <div key={t.id} className="arow hold">
                     <div className="abody">
                       <span className="atitle">{t.title}</span>
-                      <span className="adate">{[doneInfo(t), t.group].filter(Boolean).join(" · ")}</span>
+                      <span className="adate">{[t.group, t.remindAt ? ("🔔 " + fmtRemind(t.remindAt)) : (t.createdAt && fmtDate(t.createdAt))].filter(Boolean).join(" · ")}</span>
                     </div>
                     <div className="tactions">
-                      <button className="ticon" title="Geri al" onClick={() => unarchiveTask(t.id)}>↩</button>
+                      <button className="ticon" title="Geri al" onClick={() => unholdTask(t.id)}>↩</button>
                       <button className="ticon del" title="Sil" onClick={() => deleteTaskFull(t.id)}>×</button>
                     </div>
                   </div>
@@ -974,7 +1005,9 @@ export default function App() {
               <>
                 <button onClick={() => { setQuickSubFor(menu.tid); setMenu(null); }}>Alt görev ekle</button>
                 <button onClick={() => startEdit(menu.tid, null)}>Düzenle</button>
-                {mt?.done && <button onClick={() => { archiveTask(menu.tid); setMenu(null); }}>Arşivle</button>}
+                {mt?.done
+                  ? <button onClick={() => { archiveTask(menu.tid); setMenu(null); }}>Arşivle</button>
+                  : <button onClick={() => { holdTask(menu.tid); setMenu(null); }}>Askıya al</button>}
                 <button className="del" onClick={() => { deleteTaskFull(menu.tid); setMenu(null); }}>Sil</button>
               </>
             )}
@@ -1069,6 +1102,7 @@ const CSS = `
 .arow:last-child{border-bottom:none}
 .abody{flex:1;min-width:0}
 .atitle{font-family:var(--serif);font-size:15px;line-height:1.35;color:var(--mut);text-decoration:line-through;word-break:break-word}
+.arow.hold .atitle{color:var(--txt);text-decoration:none;opacity:.92}
 .adate{display:block;margin-top:2px;font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--gold);opacity:.8}
 .subbadge{font-family:var(--mono);font-size:10px;letter-spacing:.06em;color:var(--gold);
   background:none;border:1px solid rgba(224,163,74,.35);border-radius:999px;padding:1px 6px;

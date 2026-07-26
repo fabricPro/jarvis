@@ -126,7 +126,7 @@ const RESPONSE_SCHEMA = {
 function stateForPrompt(state: TaskState) {
   return {
     tasks: state.tasks
-      .filter((t) => !t.archived)
+      .filter((t) => !t.archived && !t.onHold)
       .map((t) => ({
         id: t.id,
         title: t.title,
@@ -215,13 +215,13 @@ export async function geminiReduce(
     throw new Error('Gemini yanıtında tasks dizisi yok')
   }
 
-  // Arşivli görevler Gemini'ye gönderilmedi (stateForPrompt aktifleri kullandı);
-  // reconcile'ı yalnızca aktiflerle çalıştır, sonra arşivlileri geri ekle → kaybolmasınlar.
-  const archived = prev.tasks.filter((t) => t.archived)
-  const activePrev: TaskState = { ...prev, tasks: prev.tasks.filter((t) => !t.archived) }
+  // Arşivli/askıdaki görevler Gemini'ye gönderilmedi (stateForPrompt aktifleri kullandı);
+  // reconcile'ı yalnızca aktiflerle çalıştır, sonra korunanları geri ekle → kaybolmasınlar/değişmesinler.
+  const preserved = prev.tasks.filter((t) => t.archived || t.onHold)
+  const activePrev: TaskState = { ...prev, tasks: prev.tasks.filter((t) => !t.archived && !t.onHold) }
   const reconciled = reconcile(activePrev, output.tasks, now)
   const state: TaskState = {
-    tasks: [...reconciled.tasks, ...archived],
+    tasks: [...reconciled.tasks, ...preserved],
     log: reconciled.log,
     updatedAt: now,
   }

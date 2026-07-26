@@ -237,7 +237,7 @@ export default {
 
     // Zamanı geçmiş/gelmiş, bir kez gönderilmemiş, açık ve arşivsiz görevler.
     const due = state.tasks.filter(
-      (t) => t.remindAt && !t.reminderSent && !t.done && !t.archived && t.remindAt <= now,
+      (t) => t.remindAt && !t.reminderSent && !t.done && !t.archived && !t.onHold && t.remindAt <= now,
     )
     const hasKey = !!env.VAPID_PRIVATE_KEY
     console.log(`[cron] ${now} due=${due.length} vapidKey=${hasKey}`)
